@@ -56,7 +56,7 @@ public class HiveIcebergInputFormat extends MapredIcebergInputFormat<Record>
     if (hiveFilter != null) {
       ExprNodeGenericFuncDesc exprNodeDesc = SerializationUtilities
               .deserializeObject(hiveFilter, ExprNodeGenericFuncDesc.class);
-      SearchArgument sarg = ConvertAstToSearchArg.create(job, exprNodeDesc);
+      SearchArgument sarg = ConvertAstToSearchArg.create(exprNodeDesc);
       try {
         Expression filter = HiveIcebergFilterFactory.generateFilterExpression(sarg);
         job.set(InputFormatConfig.FILTER_EXPRESSION, SerializationUtil.serializeToBase64(filter));

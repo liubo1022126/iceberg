@@ -67,7 +67,7 @@ public class TestHiveShell {
   public void setHiveSessionValue(String key, String value) {
     Preconditions.checkState(session != null, "There is no open session for setting variables.");
     try {
-      session.getSessionConf().set(key, value);
+      session.getHiveConf().set(key, value);
     } catch (Exception e) {
       throw new RuntimeException("Unable to set Hive session variable: ", e);
     }
