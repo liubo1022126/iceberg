@@ -165,8 +165,7 @@ public class HiveIcebergSerDe extends AbstractSerDe {
     String columnTypes = serDeProperties.getProperty(serdeConstants.LIST_COLUMN_TYPES);
     // No constant for column comments and column comments delimiter.
     String columnComments = serDeProperties.getProperty(LIST_COLUMN_COMMENT);
-    String columnNameDelimiter = serDeProperties.containsKey(serdeConstants.COLUMN_NAME_DELIMITER) ?
-        serDeProperties.getProperty(serdeConstants.COLUMN_NAME_DELIMITER) : String.valueOf(SerDeUtils.COMMA);
+    String columnNameDelimiter = String.valueOf(SerDeUtils.COMMA);
     if (columnNames != null && columnTypes != null && columnNameDelimiter != null &&
         !columnNames.isEmpty() && !columnTypes.isEmpty() && !columnNameDelimiter.isEmpty()) {
       // Parse the configuration parameters
