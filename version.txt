@@ -1,1 +1,1 @@
-0.12.0_watermark_hive-2.1.1
+0.12.0-tag_hellobike
