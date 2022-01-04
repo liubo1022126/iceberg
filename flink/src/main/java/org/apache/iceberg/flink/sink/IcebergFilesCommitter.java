@@ -40,6 +40,7 @@ import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.runtime.typeutils.SortedMapTypeInfo;
 import org.apache.iceberg.AppendFiles;
+import org.apache.iceberg.DataOperations;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.ReplacePartitions;
 import org.apache.iceberg.RowDelta;
@@ -145,9 +146,12 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     this.manifestOutputFileFactory = FlinkManifestUtil.createOutputFileFactory(table, flinkJobId, subTaskId, attemptId);
     this.maxCommittedCheckpointId = INITIAL_CHECKPOINT_ID;
 
-    Snapshot currentSnapshot = this.table.currentSnapshot();
-    this.currentWatermark = currentSnapshot == null ? WATERMARK_VALUE_DEFAULT :
-            PropertyUtil.propertyAsLong(currentSnapshot.summary(), WATERMARK_VALUE, WATERMARK_VALUE_DEFAULT);
+    Snapshot lastAppendSnapshot = this.table.currentSnapshot();
+    while (lastAppendSnapshot != null && !DataOperations.APPEND.equals(lastAppendSnapshot.operation())) {
+      lastAppendSnapshot = table.snapshot(lastAppendSnapshot.parentId());
+    }
+    this.currentWatermark = lastAppendSnapshot == null ? WATERMARK_VALUE_DEFAULT :
+        PropertyUtil.propertyAsLong(lastAppendSnapshot.summary(), WATERMARK_VALUE, WATERMARK_VALUE_DEFAULT);
     this.watermarkState = context.getOperatorStateStore().getListState(WATERMARK_DESCRIPTOR);
 
     this.checkpointsState = context.getOperatorStateStore().getListState(STATE_DESCRIPTOR);
