@@ -35,7 +35,7 @@ public class WriteResult implements Serializable {
   private DeleteFile[] deleteFiles;
   private CharSequence[] referencedDataFiles;
 
-  private Long watermark = WATERMARK_VALUE_DEFAULT;
+  private long watermark = WATERMARK_VALUE_DEFAULT;
 
   private WriteResult(List<DataFile> dataFiles,
                       List<DeleteFile> deleteFiles,
@@ -57,11 +57,11 @@ public class WriteResult implements Serializable {
     return referencedDataFiles;
   }
 
-  public Long getWatermark() {
+  public long getWatermark() {
     return watermark;
   }
 
-  public WriteResult setWatermark(Long watermark) {
+  public WriteResult setWatermark(long watermark) {
     this.watermark = watermark;
     return this;
   }

@@ -61,6 +61,7 @@ import org.apache.iceberg.util.PropertyUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.iceberg.TableProperties.WATERMARK_EMPTY_SKIP_VALUE;
 import static org.apache.iceberg.TableProperties.WATERMARK_VALUE;
 import static org.apache.iceberg.TableProperties.WATERMARK_VALUE_DEFAULT;
 
@@ -196,8 +197,10 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     checkpointsState.add(dataFilesPerCheckpoint);
 
     // min(watermarkPerWriter).
-    Long minWatermarkPerWriter = writeResultsOfCurrentCkpt.stream().map(r -> r.getWatermark()).min((w1, w2) -> w1 > w2 ?
-        1 : -1).get();
+    Long minWatermarkPerWriter = writeResultsOfCurrentCkpt.stream().map(r -> r.getWatermark())
+        .filter(w -> w != WATERMARK_EMPTY_SKIP_VALUE)
+        .min((w1, w2) -> w1 > w2 ? 1 : -1)
+        .orElse(WATERMARK_VALUE_DEFAULT);
     // watermark must move forward, Can't go back.
     currentWatermark = minWatermarkPerWriter > currentWatermark ? minWatermarkPerWriter : currentWatermark;
     watermarkPerCheckpoint.put(checkpointId, currentWatermark);

@@ -59,6 +59,8 @@ import org.slf4j.LoggerFactory;
 
 import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT;
 import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT_DEFAULT;
+import static org.apache.iceberg.TableProperties.WATERMARK_EMPTY_SKIP;
+import static org.apache.iceberg.TableProperties.WATERMARK_EMPTY_SKIP_DEFAULT;
 import static org.apache.iceberg.TableProperties.WATERMARK_FIELD_NAME;
 import static org.apache.iceberg.TableProperties.WATERMARK_FIELD_NAME_DEFAULT;
 import static org.apache.iceberg.TableProperties.WRITE_DISTRIBUTION_MODE;
@@ -404,15 +406,18 @@ public class FlinkSink {
     Map<String, String> props = table.properties();
     long targetFileSize = getTargetFileSizeBytes(props);
     FileFormat fileFormat = getFileFormat(props);
-    String watermarkFieldName = getWatermarkFieldName(props);
 
     Table serializableTable = SerializableTable.copyOf(table);
     TaskWriterFactory<RowData> taskWriterFactory = new RowDataTaskWriterFactory(
         serializableTable, flinkRowType, targetFileSize,
         fileFormat, equalityFieldIds);
 
+    String watermarkFieldName = getWatermarkFieldName(props);
     if (!WATERMARK_FIELD_NAME_DEFAULT.equals(watermarkFieldName)) {
       IcebergWatermark icebergWatermark = new IcebergWatermark(watermarkFieldName, flinkRowType);
+      if (isSkipEmptyWatermark(props)) {
+        icebergWatermark.skipEmpty();
+      }
       return new IcebergStreamWriter<>(table.name(), taskWriterFactory, icebergWatermark);
     } else {
       return new IcebergStreamWriter<>(table.name(), taskWriterFactory);
@@ -436,5 +441,12 @@ public class FlinkSink {
         properties,
         WATERMARK_FIELD_NAME,
         WATERMARK_FIELD_NAME_DEFAULT);
+  }
+
+  private static boolean isSkipEmptyWatermark(Map<String, String> properties) {
+    return PropertyUtil.propertyAsBoolean(
+        properties,
+        WATERMARK_EMPTY_SKIP,
+        WATERMARK_EMPTY_SKIP_DEFAULT);
   }
 }

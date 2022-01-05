@@ -29,6 +29,8 @@ public class IcebergWatermark implements Serializable {
   private final RowType flinkRowType;
   private final int watermarkFieldPos;
 
+  private boolean skipEmpty = false;
+
   public IcebergWatermark(String watermarkFieldName, RowType flinkRowType) {
     Preconditions.checkArgument(
         watermarkFieldName != null && !"".equals(watermarkFieldName),
@@ -57,5 +59,13 @@ public class IcebergWatermark implements Serializable {
 
   public int getWatermarkFieldPos() {
     return watermarkFieldPos;
+  }
+
+  public boolean isSkipEmpty() {
+    return skipEmpty;
+  }
+
+  public void skipEmpty() {
+    this.skipEmpty = true;
   }
 }

@@ -31,6 +31,7 @@ import org.apache.iceberg.io.TaskWriter;
 import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.relocated.com.google.common.base.MoreObjects;
 
+import static org.apache.iceberg.TableProperties.WATERMARK_EMPTY_SKIP_VALUE;
 import static org.apache.iceberg.TableProperties.WATERMARK_VALUE_DEFAULT;
 
 class IcebergStreamWriter<T> extends AbstractStreamOperator<WriteResult>
@@ -46,7 +47,7 @@ class IcebergStreamWriter<T> extends AbstractStreamOperator<WriteResult>
   private transient int subTaskId;
   private transient int attemptId;
 
-  private Long watermark;
+  private long watermark;
 
   IcebergStreamWriter(String fullTableName, TaskWriterFactory<T> taskWriterFactory) {
     this.fullTableName = fullTableName;
@@ -88,7 +89,7 @@ class IcebergStreamWriter<T> extends AbstractStreamOperator<WriteResult>
   public void processElement(StreamRecord<T> element) throws Exception {
     if (icebergWatermark != null) {
       RowData rowData = (RowData) element.getValue();
-      Long currentWatermark = icebergWatermark.getWatermark(rowData);
+      long currentWatermark = icebergWatermark.getWatermark(rowData);
       watermark = currentWatermark > watermark ? currentWatermark : watermark;
     }
 
@@ -124,5 +125,10 @@ class IcebergStreamWriter<T> extends AbstractStreamOperator<WriteResult>
     result.setWatermark(watermark);
 
     output.collect(new StreamRecord<>(result));
+
+    // IcebergFilesCommitter will skip the watermark which value is WATERMARK_EMPTY_SKIP_VALUE.
+    if (icebergWatermark.isSkipEmpty()) {
+      watermark = WATERMARK_EMPTY_SKIP_VALUE;
+    }
   }
 }
