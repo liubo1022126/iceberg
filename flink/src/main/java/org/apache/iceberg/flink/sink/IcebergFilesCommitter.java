@@ -40,6 +40,7 @@ import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.runtime.typeutils.SortedMapTypeInfo;
 import org.apache.iceberg.AppendFiles;
+import org.apache.iceberg.DataOperations;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.ReplacePartitions;
 import org.apache.iceberg.RowDelta;
@@ -60,6 +61,7 @@ import org.apache.iceberg.util.PropertyUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.iceberg.TableProperties.WATERMARK_EMPTY_SKIP_VALUE;
 import static org.apache.iceberg.TableProperties.WATERMARK_VALUE;
 import static org.apache.iceberg.TableProperties.WATERMARK_VALUE_DEFAULT;
 
@@ -145,9 +147,12 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     this.manifestOutputFileFactory = FlinkManifestUtil.createOutputFileFactory(table, flinkJobId, subTaskId, attemptId);
     this.maxCommittedCheckpointId = INITIAL_CHECKPOINT_ID;
 
-    Snapshot currentSnapshot = this.table.currentSnapshot();
-    this.currentWatermark = currentSnapshot == null ? WATERMARK_VALUE_DEFAULT :
-            PropertyUtil.propertyAsLong(currentSnapshot.summary(), WATERMARK_VALUE, WATERMARK_VALUE_DEFAULT);
+    Snapshot lastAppendSnapshot = this.table.currentSnapshot();
+    while (lastAppendSnapshot != null && !DataOperations.APPEND.equals(lastAppendSnapshot.operation())) {
+      lastAppendSnapshot = table.snapshot(lastAppendSnapshot.parentId());
+    }
+    this.currentWatermark = lastAppendSnapshot == null ? WATERMARK_VALUE_DEFAULT :
+        PropertyUtil.propertyAsLong(lastAppendSnapshot.summary(), WATERMARK_VALUE, WATERMARK_VALUE_DEFAULT);
     this.watermarkState = context.getOperatorStateStore().getListState(WATERMARK_DESCRIPTOR);
 
     this.checkpointsState = context.getOperatorStateStore().getListState(STATE_DESCRIPTOR);
@@ -192,8 +197,10 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     checkpointsState.add(dataFilesPerCheckpoint);
 
     // min(watermarkPerWriter).
-    Long minWatermarkPerWriter = writeResultsOfCurrentCkpt.stream().map(r -> r.getWatermark()).min((w1, w2) -> w1 > w2 ?
-        1 : -1).get();
+    Long minWatermarkPerWriter = writeResultsOfCurrentCkpt.stream().map(r -> r.getWatermark())
+        .filter(w -> w != WATERMARK_EMPTY_SKIP_VALUE)
+        .min((w1, w2) -> w1 > w2 ? 1 : -1)
+        .orElse(WATERMARK_VALUE_DEFAULT);
     // watermark must move forward, Can't go back.
     currentWatermark = minWatermarkPerWriter > currentWatermark ? minWatermarkPerWriter : currentWatermark;
     watermarkPerCheckpoint.put(checkpointId, currentWatermark);

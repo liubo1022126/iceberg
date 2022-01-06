@@ -228,4 +228,8 @@ public class TableProperties {
 
   public static final String WATERMARK_VALUE = "write.watermark";
   public static final long WATERMARK_VALUE_DEFAULT = -1;
+
+  public static final String WATERMARK_EMPTY_SKIP = "write.watermark.empty.skip";
+  public static final boolean WATERMARK_EMPTY_SKIP_DEFAULT = false;
+  public static final long WATERMARK_EMPTY_SKIP_VALUE = -2;
 }
