@@ -87,3 +87,10 @@ Iceberg's Spark integration is compatible with Spark 2.4 and Spark 3.0 using the
 | 0.9.0           | spark-runtime | spark3-runtime |
 | 0.8.0           | spark-runtime |                |
 
+###Pre-merged PR
+* Flink: Support create iceberg table with 'connector'='iceberg' #2666
+
+###Hellobike Support
+* Flink: support write watermark in snapshot.
+* MR: suit to hive 2.1.1
+* Flink: streaming read without startSnapshotId will read date from now, not get all data first time
