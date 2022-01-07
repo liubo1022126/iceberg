@@ -127,7 +127,7 @@ class IcebergStreamWriter<T> extends AbstractStreamOperator<WriteResult>
     output.collect(new StreamRecord<>(result));
 
     // IcebergFilesCommitter will skip the watermark which value is WATERMARK_EMPTY_SKIP_VALUE.
-    if (icebergWatermark.isSkipEmpty()) {
+    if (icebergWatermark != null && icebergWatermark.isSkipEmpty()) {
       watermark = WATERMARK_EMPTY_SKIP_VALUE;
     }
   }
