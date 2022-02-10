@@ -19,8 +19,10 @@
 
 package org.apache.iceberg.flink.source;
 
-import java.io.IOException;
 import java.util.Queue;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.runtime.state.JavaSerializer;
@@ -63,12 +65,15 @@ public class StreamingReaderOperator extends AbstractStreamOperator<RowData>
   // one split for future reading, so that a new checkpoint could be triggered without blocking long time for exhausting
   // all scheduled splits.
   private final MailboxExecutor executor;
+  private final long readLimitPerSecond;
   private FlinkInputFormat format;
 
   private transient SourceFunction.SourceContext<RowData> sourceContext;
 
   private transient ListState<FlinkInputSplit> inputSplitsState;
   private transient Queue<FlinkInputSplit> splits;
+
+  private AtomicLong readLimitPerSecondCurrent = new AtomicLong(0L);
 
   // Splits are read by the same thread that calls processElement. Each read task is submitted to that thread by adding
   // them to the executor. This state is used to ensure that only one read task is in that queue at a time, so that read
@@ -77,10 +82,11 @@ public class StreamingReaderOperator extends AbstractStreamOperator<RowData>
   private transient SplitState currentSplitState;
 
   private StreamingReaderOperator(FlinkInputFormat format, ProcessingTimeService timeService,
-                                  MailboxExecutor mailboxExecutor) {
+                                  MailboxExecutor mailboxExecutor, long readLimitPerSecond) {
     this.format = Preconditions.checkNotNull(format, "The InputFormat should not be null.");
     this.processingTimeService = timeService;
     this.executor = Preconditions.checkNotNull(mailboxExecutor, "The mailboxExecutor should not be null.");
+    this.readLimitPerSecond = readLimitPerSecond;
   }
 
   @Override
@@ -117,6 +123,10 @@ public class StreamingReaderOperator extends AbstractStreamOperator<RowData>
 
     // Enqueue to process the recovered input splits.
     enqueueProcessSplits();
+
+    if (readLimitPerSecond > 0) {
+      readLimitTimerSetup();
+    }
   }
 
   @Override
@@ -140,7 +150,7 @@ public class StreamingReaderOperator extends AbstractStreamOperator<RowData>
     }
   }
 
-  private void processSplits() throws IOException {
+  private void processSplits() throws Exception {
     FlinkInputSplit split = splits.poll();
     if (split == null) {
       currentSplitState = SplitState.IDLE;
@@ -151,6 +161,9 @@ public class StreamingReaderOperator extends AbstractStreamOperator<RowData>
     try {
       RowData nextElement = null;
       while (!format.reachedEnd()) {
+        while (readLimitPerSecond > 0 && readLimitPerSecondCurrent.incrementAndGet() > readLimitPerSecond) {
+          Thread.sleep(100);
+        }
         nextElement = format.nextRecord(nextElement);
         sourceContext.collect(nextElement);
       }
@@ -161,6 +174,15 @@ public class StreamingReaderOperator extends AbstractStreamOperator<RowData>
 
     // Re-schedule to process the next split.
     enqueueProcessSplits();
+  }
+
+  private void readLimitTimerSetup() {
+    new Timer("readLimitPerSecondTimer").schedule(new TimerTask() {
+      @Override
+      public void run() {
+        readLimitPerSecondCurrent.set(0L);
+      }
+    }, 1000, 1000);
   }
 
   @Override
@@ -192,8 +214,10 @@ public class StreamingReaderOperator extends AbstractStreamOperator<RowData>
     }
   }
 
-  static OneInputStreamOperatorFactory<FlinkInputSplit, RowData> factory(FlinkInputFormat format) {
-    return new OperatorFactory(format);
+  static OneInputStreamOperatorFactory<FlinkInputSplit, RowData> factory(
+      FlinkInputFormat format, long readLimitPerSecond) {
+    OperatorFactory operatorFactory = new OperatorFactory(format, readLimitPerSecond);
+    return operatorFactory;
   }
 
   private enum SplitState {
@@ -204,11 +228,13 @@ public class StreamingReaderOperator extends AbstractStreamOperator<RowData>
       implements YieldingOperatorFactory<RowData>, OneInputStreamOperatorFactory<FlinkInputSplit, RowData> {
 
     private final FlinkInputFormat format;
+    private final long readLimitPerSecond;
 
     private transient MailboxExecutor mailboxExecutor;
 
-    private OperatorFactory(FlinkInputFormat format) {
+    private OperatorFactory(FlinkInputFormat format, long readLimitPerSecond) {
       this.format = format;
+      this.readLimitPerSecond = readLimitPerSecond;
     }
 
     @Override
@@ -219,7 +245,8 @@ public class StreamingReaderOperator extends AbstractStreamOperator<RowData>
     @SuppressWarnings("unchecked")
     @Override
     public <O extends StreamOperator<RowData>> O createStreamOperator(StreamOperatorParameters<RowData> parameters) {
-      StreamingReaderOperator operator = new StreamingReaderOperator(format, processingTimeService, mailboxExecutor);
+      StreamingReaderOperator operator =
+          new StreamingReaderOperator(format, processingTimeService, mailboxExecutor, readLimitPerSecond);
       operator.setup(parameters.getContainingTask(), parameters.getStreamConfig(), parameters.getOutput());
       return (O) operator;
     }
