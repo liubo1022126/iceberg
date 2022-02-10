@@ -215,8 +215,10 @@ public class FlinkSource {
         String monitorFunctionName = String.format("Iceberg table (%s) monitor", table);
         String readerOperatorName = String.format("Iceberg table (%s) reader", table);
 
+        long readLimitPerSecond = readableConfig.get(FlinkConfigOptions.READ_LIMIT_PER_SECOND);
+
         return env.addSource(function, monitorFunctionName)
-            .transform(readerOperatorName, typeInfo, StreamingReaderOperator.factory(format));
+            .transform(readerOperatorName, typeInfo, StreamingReaderOperator.factory(format, readLimitPerSecond));
       }
     }
 
