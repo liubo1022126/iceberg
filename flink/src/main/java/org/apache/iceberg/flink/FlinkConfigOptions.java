@@ -45,4 +45,10 @@ public class FlinkConfigOptions {
           .longType()
           .defaultValue(-1L)
           .withDescription("Sets steaming read limit per second infer parallelism for source operator.");
+
+  public static final ConfigOption<Long> READ_SPLIT_WAIT_TIME =
+      ConfigOptions.key("read.split.wait")
+          .longType()
+          .defaultValue(-1L)
+          .withDescription("Sets wait time (ms) after every split for read operator.");
 }
