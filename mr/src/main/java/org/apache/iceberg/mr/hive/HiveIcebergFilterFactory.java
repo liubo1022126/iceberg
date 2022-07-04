@@ -168,7 +168,7 @@ public class HiveIcebergFilterFactory {
   }
 
   private static BigDecimal hiveDecimalToBigDecimal(HiveDecimalWritable hiveDecimalWritable) {
-    return hiveDecimalWritable.getHiveDecimal().bigDecimalValue().setScale(hiveDecimalWritable.scale());
+    return hiveDecimalWritable.getHiveDecimal().bigDecimalValue().setScale(hiveDecimalWritable.getScale());
   }
 
   // Hive uses `java.sql.Date.valueOf(lit.toString());` to convert a literal to Date

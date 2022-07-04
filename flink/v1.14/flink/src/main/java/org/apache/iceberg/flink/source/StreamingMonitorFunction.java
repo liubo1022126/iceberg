@@ -104,6 +104,12 @@ public class StreamingMonitorFunction extends RichSourceFunction<FlinkInputSplit
 
       lastSnapshotId = scanContext.startSnapshotId();
     }
+
+    if (lastSnapshotId == INIT_LAST_SNAPSHOT_ID) {
+      Preconditions.checkNotNull(table.currentSnapshot(), "Don't have any available snapshot in table.");
+
+      lastSnapshotId = table.currentSnapshot().snapshotId();
+    }
   }
 
   @Override

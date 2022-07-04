@@ -98,3 +98,11 @@ Iceberg's Flink integration is compatible with Flink using the modules in the fo
 | 0.11.x          | iceberg-flink-runtime |                            |                            |                            |
 | 0.10.x          | iceberg-flink-runtime |                            |                            |                            |
 
+###Pre PR
+ORC:ORC supports rolling writers. from pr#3784
+
+###Hellobike Support
+* Flink: support write watermark in snapshot.
+* MR: suit to hive 2.1.1
+* Flink: streaming read without startSnapshotId will read date from now, not get all data first time
+* Flink: Support 'read.limit.per-second' and 'read.split.wait' when streaming read.

@@ -30,6 +30,7 @@ import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeinfo.PrimitiveArrayTypeInfo;
+import org.apache.flink.api.java.typeutils.MapTypeInfo;
 import org.apache.flink.core.io.SimpleVersionedSerialization;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
@@ -39,6 +40,7 @@ import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.runtime.typeutils.SortedMapTypeInfo;
 import org.apache.iceberg.AppendFiles;
+import org.apache.iceberg.DataOperations;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.ReplacePartitions;
 import org.apache.iceberg.RowDelta;
@@ -57,6 +59,10 @@ import org.apache.iceberg.types.Types;
 import org.apache.iceberg.util.PropertyUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.apache.iceberg.TableProperties.WATERMARK_EMPTY_SKIP_VALUE;
+import static org.apache.iceberg.TableProperties.WATERMARK_VALUE;
+import static org.apache.iceberg.TableProperties.WATERMARK_VALUE_DEFAULT;
 
 class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     implements OneInputStreamOperator<WriteResult, Void>, BoundedOneInput {
@@ -86,6 +92,13 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
   // any data loss in iceberg table. So we keep the finished files <1, <file0, file1>> in memory and retry to commit
   // iceberg table when the next checkpoint happen.
   private final NavigableMap<Long, byte[]> dataFilesPerCheckpoint = Maps.newTreeMap();
+
+  // watermark
+  private transient long currentWatermark;
+  private final NavigableMap<Long, Long> watermarkPerCheckpoint = Maps.newTreeMap();
+  private static final ListStateDescriptor<Map<Long, Long>> WATERMARK_DESCRIPTOR = new ListStateDescriptor<>(
+      "iceberg-flink-watermark", new MapTypeInfo<>(BasicTypeInfo.LONG_TYPE_INFO, BasicTypeInfo.LONG_TYPE_INFO));
+  private transient ListState<Map<Long, Long>> watermarkState;
 
   // The completed files cache for current checkpoint. Once the snapshot barrier received, it will be flushed to the
   // 'dataFilesPerCheckpoint'.
@@ -124,7 +137,8 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     this.table = tableLoader.loadTable();
 
     maxContinuousEmptyCommits = PropertyUtil.propertyAsInt(table.properties(), MAX_CONTINUOUS_EMPTY_COMMITS, 10);
-    Preconditions.checkArgument(maxContinuousEmptyCommits > 0,
+    Preconditions.checkArgument(
+        maxContinuousEmptyCommits > 0,
         MAX_CONTINUOUS_EMPTY_COMMITS + " must be positive");
 
     int subTaskId = getRuntimeContext().getIndexOfThisSubtask();
@@ -132,9 +146,22 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     this.manifestOutputFileFactory = FlinkManifestUtil.createOutputFileFactory(table, flinkJobId, subTaskId, attemptId);
     this.maxCommittedCheckpointId = INITIAL_CHECKPOINT_ID;
 
+    Snapshot lastAppendSnapshot = this.table.currentSnapshot();
+    while (lastAppendSnapshot != null && !DataOperations.APPEND.equals(lastAppendSnapshot.operation())) {
+      lastAppendSnapshot = table.snapshot(lastAppendSnapshot.parentId());
+    }
+    this.currentWatermark = lastAppendSnapshot == null ? WATERMARK_VALUE_DEFAULT :
+        PropertyUtil.propertyAsLong(lastAppendSnapshot.summary(), WATERMARK_VALUE, WATERMARK_VALUE_DEFAULT);
+    this.watermarkState = context.getOperatorStateStore().getListState(WATERMARK_DESCRIPTOR);
+
     this.checkpointsState = context.getOperatorStateStore().getListState(STATE_DESCRIPTOR);
     this.jobIdState = context.getOperatorStateStore().getListState(JOB_ID_DESCRIPTOR);
     if (context.isRestored()) {
+      Map<Long, Long> restoredWatermarkPerCheckpoint = watermarkState.get().iterator().next();
+      if (restoredWatermarkPerCheckpoint != null) {
+        watermarkPerCheckpoint.putAll(restoredWatermarkPerCheckpoint);
+      }
+
       String restoredFlinkJobId = jobIdState.get().iterator().next();
       Preconditions.checkState(!Strings.isNullOrEmpty(restoredFlinkJobId),
           "Flink job id parsed from checkpoint snapshot shouldn't be null or empty");
@@ -167,6 +194,17 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     checkpointsState.clear();
     checkpointsState.add(dataFilesPerCheckpoint);
 
+    // min(watermarkPerWriter).
+    Long minWatermarkPerWriter = writeResultsOfCurrentCkpt.stream().map(r -> r.getWatermark())
+        .filter(w -> w != WATERMARK_EMPTY_SKIP_VALUE)
+        .min((w1, w2) -> w1 > w2 ? 1 : -1)
+        .orElse(WATERMARK_VALUE_DEFAULT);
+    // watermark must move forward, Can't go back.
+    currentWatermark = minWatermarkPerWriter > currentWatermark ? minWatermarkPerWriter : currentWatermark;
+    watermarkPerCheckpoint.put(checkpointId, currentWatermark);
+    watermarkState.clear();
+    watermarkState.add(watermarkPerCheckpoint);
+
     jobIdState.clear();
     jobIdState.add(flinkJobId);
 
@@ -190,9 +228,10 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     }
   }
 
-  private void commitUpToCheckpoint(NavigableMap<Long, byte[]> deltaManifestsMap,
-                                    String newFlinkJobId,
-                                    long checkpointId) throws IOException {
+  private void commitUpToCheckpoint(
+      NavigableMap<Long, byte[]> deltaManifestsMap,
+      String newFlinkJobId,
+      long checkpointId) throws IOException {
     NavigableMap<Long, byte[]> pendingMap = deltaManifestsMap.headMap(checkpointId, true);
     List<ManifestFile> manifests = Lists.newArrayList();
     NavigableMap<Long, WriteResult> pendingResults = Maps.newTreeMap();
@@ -238,8 +277,9 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     }
   }
 
-  private void replacePartitions(NavigableMap<Long, WriteResult> pendingResults, String newFlinkJobId,
-                                 long checkpointId) {
+  private void replacePartitions(
+      NavigableMap<Long, WriteResult> pendingResults, String newFlinkJobId,
+      long checkpointId) {
     // Partition overwrite does not support delete files.
     int deleteFilesNum = pendingResults.values().stream().mapToInt(r -> r.deleteFiles().length).sum();
     Preconditions.checkState(deleteFilesNum == 0, "Cannot overwrite partitions with delete files.");
@@ -301,15 +341,26 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     }
   }
 
-  private void commitOperation(SnapshotUpdate<?> operation, int numDataFiles, int numDeleteFiles, String description,
-                               String newFlinkJobId, long checkpointId) {
+  private void commitOperation(
+      SnapshotUpdate<?> operation, int numDataFiles, int numDeleteFiles, String description,
+      String newFlinkJobId, long checkpointId) {
     LOG.info("Committing {} with {} data files and {} delete files to table {}", description, numDataFiles,
         numDeleteFiles, table);
     operation.set(MAX_COMMITTED_CHECKPOINT_ID, Long.toString(checkpointId));
     operation.set(FLINK_JOB_ID, newFlinkJobId);
 
+    NavigableMap<Long, Long> watermarkMap = watermarkPerCheckpoint.headMap(checkpointId, true);
+    Long watermarkNow = watermarkMap.get(checkpointId);
+    if (watermarkNow != null && watermarkNow > 0) {
+      operation.set(WATERMARK_VALUE, String.valueOf(watermarkNow));
+      LOG.info("Committing {} to {}", WATERMARK_VALUE, watermarkNow);
+    }
+
     long start = System.currentTimeMillis();
     operation.commit(); // abort is automatically called if this fails.
+
+    watermarkMap.clear();
+
     long duration = System.currentTimeMillis() - start;
     LOG.info("Committed in {} ms", duration);
   }

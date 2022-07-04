@@ -47,6 +47,7 @@ import org.apache.iceberg.Schema;
 import org.apache.iceberg.SerializableTable;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
+import org.apache.iceberg.flink.IcebergWatermark;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.util.FlinkCompatibilityUtil;
 import org.apache.iceberg.io.WriteResult;
@@ -59,6 +60,10 @@ import org.slf4j.LoggerFactory;
 
 import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT;
 import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT_DEFAULT;
+import static org.apache.iceberg.TableProperties.WATERMARK_EMPTY_SKIP;
+import static org.apache.iceberg.TableProperties.WATERMARK_EMPTY_SKIP_DEFAULT;
+import static org.apache.iceberg.TableProperties.WATERMARK_FIELD_NAME;
+import static org.apache.iceberg.TableProperties.WATERMARK_FIELD_NAME_DEFAULT;
 import static org.apache.iceberg.TableProperties.UPSERT_ENABLED;
 import static org.apache.iceberg.TableProperties.UPSERT_ENABLED_DEFAULT;
 import static org.apache.iceberg.TableProperties.WRITE_DISTRIBUTION_MODE;
@@ -462,7 +467,16 @@ public class FlinkSink {
         serializableTable, flinkRowType, targetFileSize,
         fileFormat, equalityFieldIds, upsert);
 
-    return new IcebergStreamWriter<>(table.name(), taskWriterFactory);
+    String watermarkFieldName = getWatermarkFieldName(props);
+    if (!WATERMARK_FIELD_NAME_DEFAULT.equals(watermarkFieldName)) {
+      IcebergWatermark icebergWatermark = new IcebergWatermark(watermarkFieldName, flinkRowType);
+      if (isSkipEmptyWatermark(props)) {
+        icebergWatermark.skipEmpty();
+      }
+      return new IcebergStreamWriter<>(table.name(), taskWriterFactory, icebergWatermark);
+    } else {
+      return new IcebergStreamWriter<>(table.name(), taskWriterFactory);
+    }
   }
 
   private static FileFormat getFileFormat(Map<String, String> properties) {
@@ -474,5 +488,19 @@ public class FlinkSink {
     return PropertyUtil.propertyAsLong(properties,
         WRITE_TARGET_FILE_SIZE_BYTES,
         WRITE_TARGET_FILE_SIZE_BYTES_DEFAULT);
+  }
+
+  private static String getWatermarkFieldName(Map<String, String> properties) {
+    return PropertyUtil.propertyAsString(
+        properties,
+        WATERMARK_FIELD_NAME,
+        WATERMARK_FIELD_NAME_DEFAULT);
+  }
+
+  private static boolean isSkipEmptyWatermark(Map<String, String> properties) {
+    return PropertyUtil.propertyAsBoolean(
+        properties,
+        WATERMARK_EMPTY_SKIP,
+        WATERMARK_EMPTY_SKIP_DEFAULT);
   }
 }
