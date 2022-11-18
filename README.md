@@ -81,3 +81,9 @@ This project Iceberg also has modules for adding Iceberg support to processing e
 
 See the [Multi-Engine Support](https://iceberg.apache.org/multi-engine-support/) page to know about Iceberg compatibility with different Spark, Flink and Hive versions.
 For other engines such as Presto or Trino, please visit their websites for Iceberg integration details.
+
+###Hellobike Support
+* Flink: support write watermark in snapshot.
+* MR: suit to hive 2.1.1
+* Flink: streaming read without startSnapshotId will read date from now, not get all data first time
+* Flink: Support 'read.limit.per-second' and 'read.split.wait' when streaming read.

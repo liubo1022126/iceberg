@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.List;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DeleteFile;
+import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.relocated.com.google.common.collect.Iterables;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.util.CharSequenceSet;
@@ -31,6 +32,8 @@ public class WriteResult implements Serializable {
   private DataFile[] dataFiles;
   private DeleteFile[] deleteFiles;
   private CharSequence[] referencedDataFiles;
+
+  private long watermark = TableProperties.WATERMARK_VALUE_DEFAULT;
 
   private WriteResult(
       List<DataFile> dataFiles, List<DeleteFile> deleteFiles, CharSequenceSet referencedDataFiles) {
@@ -49,6 +52,15 @@ public class WriteResult implements Serializable {
 
   public CharSequence[] referencedDataFiles() {
     return referencedDataFiles;
+  }
+
+  public long getWatermark() {
+    return watermark;
+  }
+
+  public WriteResult setWatermark(long watermark) {
+    this.watermark = watermark;
+    return this;
   }
 
   public static Builder builder() {

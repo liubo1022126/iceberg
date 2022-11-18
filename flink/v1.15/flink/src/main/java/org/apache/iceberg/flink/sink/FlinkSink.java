@@ -18,6 +18,10 @@
  */
 package org.apache.iceberg.flink.sink;
 
+import static org.apache.iceberg.TableProperties.WATERMARK_EMPTY_SKIP;
+import static org.apache.iceberg.TableProperties.WATERMARK_EMPTY_SKIP_DEFAULT;
+import static org.apache.iceberg.TableProperties.WATERMARK_FIELD_NAME;
+import static org.apache.iceberg.TableProperties.WATERMARK_FIELD_NAME_DEFAULT;
 import static org.apache.iceberg.TableProperties.WRITE_DISTRIBUTION_MODE;
 
 import java.io.IOException;
@@ -51,6 +55,7 @@ import org.apache.iceberg.Table;
 import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.FlinkWriteConf;
 import org.apache.iceberg.flink.FlinkWriteOptions;
+import org.apache.iceberg.flink.IcebergWatermark;
 import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.util.FlinkCompatibilityUtil;
 import org.apache.iceberg.io.WriteResult;
@@ -60,6 +65,7 @@ import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.types.TypeUtil;
+import org.apache.iceberg.util.PropertyUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -572,6 +578,26 @@ public class FlinkSink {
             flinkWriteConf.dataFileFormat(),
             equalityFieldIds,
             flinkWriteConf.upsertMode());
-    return new IcebergStreamWriter<>(table.name(), taskWriterFactory);
+
+    String watermarkFieldName = getWatermarkFieldName(table.properties());
+    if (!WATERMARK_FIELD_NAME_DEFAULT.equals(watermarkFieldName)) {
+      IcebergWatermark icebergWatermark = new IcebergWatermark(watermarkFieldName, flinkRowType);
+      if (isSkipEmptyWatermark(table.properties())) {
+        icebergWatermark.skipEmpty();
+      }
+      return new IcebergStreamWriter<>(table.name(), taskWriterFactory, icebergWatermark);
+    } else {
+      return new IcebergStreamWriter<>(table.name(), taskWriterFactory);
+    }
+  }
+
+  private static String getWatermarkFieldName(Map<String, String> properties) {
+    return PropertyUtil.propertyAsString(
+        properties, WATERMARK_FIELD_NAME, WATERMARK_FIELD_NAME_DEFAULT);
+  }
+
+  private static boolean isSkipEmptyWatermark(Map<String, String> properties) {
+    return PropertyUtil.propertyAsBoolean(
+        properties, WATERMARK_EMPTY_SKIP, WATERMARK_EMPTY_SKIP_DEFAULT);
   }
 }
