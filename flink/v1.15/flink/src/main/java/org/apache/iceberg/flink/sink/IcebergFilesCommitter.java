@@ -176,9 +176,12 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     this.maxCommittedCheckpointId = INITIAL_CHECKPOINT_ID;
 
     Snapshot lastAppendSnapshot = this.table.currentSnapshot();
-    while (lastAppendSnapshot != null
-        && !DataOperations.APPEND.equals(lastAppendSnapshot.operation())) {
-      lastAppendSnapshot = table.snapshot(lastAppendSnapshot.parentId());
+    while (lastAppendSnapshot != null && !DataOperations.APPEND.equals(lastAppendSnapshot.operation())) {
+      if (lastAppendSnapshot.parentId() != null) {
+        lastAppendSnapshot = table.snapshot(lastAppendSnapshot.parentId());
+      } else {
+        lastAppendSnapshot = null;
+      }
     }
     this.currentWatermark =
         lastAppendSnapshot == null
