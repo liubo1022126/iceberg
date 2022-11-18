@@ -43,6 +43,7 @@ import com.google.common.collect.Multimaps;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
+import com.google.common.hash.BloomFilter;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
@@ -96,5 +97,6 @@ public class GuavaClasses {
     Iterables.class.getName();
     CountingOutputStream.class.getName();
     Suppliers.class.getName();
+    BloomFilter.class.getName();
   }
 }
