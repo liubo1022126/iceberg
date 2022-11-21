@@ -79,7 +79,7 @@ public abstract class DeleteFilter<T> {
   private Predicate<T> eqDeleteRows = null;
 
   protected DeleteFilter(
-          DataFile dataFile, List<DeleteFile> deletes, Schema tableSchema, Schema requestedSchema) {
+      DataFile dataFile, List<DeleteFile> deletes, Schema tableSchema, Schema requestedSchema) {
     this.setFilterThreshold = DEFAULT_SET_FILTER_THRESHOLD;
     this.dataFile = dataFile;
 
@@ -196,12 +196,14 @@ public abstract class DeleteFilter<T> {
       return isInDeleteSets;
     }
 
-    Multimap<Set<Integer>, DeleteFile> filesByDeleteIds = Multimaps.newMultimap(Maps.newHashMap(), Lists::newArrayList);
+    Multimap<Set<Integer>, DeleteFile> filesByDeleteIds =
+        Multimaps.newMultimap(Maps.newHashMap(), Lists::newArrayList);
     for (DeleteFile delete : eqDeletes) {
       filesByDeleteIds.put(Sets.newHashSet(delete.equalityFieldIds()), delete);
     }
 
-    for (Map.Entry<Set<Integer>, Collection<DeleteFile>> entry : filesByDeleteIds.asMap().entrySet()) {
+    for (Map.Entry<Set<Integer>, Collection<DeleteFile>> entry :
+        filesByDeleteIds.asMap().entrySet()) {
       Set<Integer> ids = entry.getKey();
       Iterable<DeleteFile> deletes = entry.getValue();
 
@@ -210,83 +212,87 @@ public abstract class DeleteFilter<T> {
       // a projection to select and reorder fields of the file schema to match the delete rows
       StructProjection projectRow = StructProjection.create(requiredSchema, deleteSchema);
 
-      Funnel<InternalRecordWrapper> funnel = new Funnel<InternalRecordWrapper>() {
+      Funnel<InternalRecordWrapper> funnel =
+          new Funnel<InternalRecordWrapper>() {
 
-        @Override
-        public void funnel(InternalRecordWrapper internalRecordWrapper, PrimitiveSink primitiveSink) {
-          for (int i = 0; i < internalRecordWrapper.get().size(); i++) {
-            Object value = internalRecordWrapper.get(i, Object.class);
-            if (value instanceof Boolean){
-              primitiveSink.putBoolean((Boolean) value);
-            }else if (value instanceof Integer){
-              primitiveSink.putInt((Integer) value);
-            }else if (value instanceof Long){
-              primitiveSink.putLong((Long) value);
-            }else if (value instanceof Float){
-              primitiveSink.putFloat((Float) value);
-            }else if (value instanceof Double) {
-              primitiveSink.putDouble((Double) value);
-            }else if (value instanceof CharSequence){
-              primitiveSink.putUnencodedChars((CharSequence) value);
-            }else if (value instanceof UUID || value instanceof BigDecimal){
-              primitiveSink.putBytes(value.toString().getBytes());
-            }else if(value instanceof ByteBuffer){
-              primitiveSink.putBytes((ByteBuffer) value);
-            }else if (value instanceof InternalRecordWrapper){
-              funnel((InternalRecordWrapper) value, primitiveSink);
+            @Override
+            public void funnel(
+                InternalRecordWrapper internalRecordWrapper, PrimitiveSink primitiveSink) {
+              for (int i = 0; i < internalRecordWrapper.get().size(); i++) {
+                Object value = internalRecordWrapper.get(i, Object.class);
+                if (value instanceof Boolean) {
+                  primitiveSink.putBoolean((Boolean) value);
+                } else if (value instanceof Integer) {
+                  primitiveSink.putInt((Integer) value);
+                } else if (value instanceof Long) {
+                  primitiveSink.putLong((Long) value);
+                } else if (value instanceof Float) {
+                  primitiveSink.putFloat((Float) value);
+                } else if (value instanceof Double) {
+                  primitiveSink.putDouble((Double) value);
+                } else if (value instanceof CharSequence) {
+                  primitiveSink.putUnencodedChars((CharSequence) value);
+                } else if (value instanceof UUID || value instanceof BigDecimal) {
+                  primitiveSink.putBytes(value.toString().getBytes());
+                } else if (value instanceof ByteBuffer) {
+                  primitiveSink.putBytes((ByteBuffer) value);
+                } else if (value instanceof InternalRecordWrapper) {
+                  funnel((InternalRecordWrapper) value, primitiveSink);
+                }
+              }
             }
-          }
-        }
-      };
+          };
       InternalRecordWrapper wrapper = new InternalRecordWrapper(deleteSchema.asStruct());
 
-      //data file deleteKey bloomFilter
-      BloomFilter<InternalRecordWrapper> bloomFilter = BloomFilter.create(funnel, dataFile.recordCount(), 0.01);
+      // data file deleteKey bloomFilter
+      BloomFilter<InternalRecordWrapper> bloomFilter =
+          BloomFilter.create(funnel, dataFile.recordCount(), 0.01);
       CloseableIterable<Record> dataRecords = openDatas(dataFile, deleteSchema);
 
-      CloseableIterable<InternalRecordWrapper> dataInternalRecords = CloseableIterable.transform(
-              dataRecords, wrapper::wrap);
+      CloseableIterable<InternalRecordWrapper> dataInternalRecords =
+          CloseableIterable.transform(dataRecords, wrapper::wrap);
 
-      //update bloomFilter
+      // update bloomFilter
       for (InternalRecordWrapper dataRecord : dataInternalRecords) {
         bloomFilter.put(dataRecord);
       }
 
-      Iterable<CloseableIterable<Record>> deleteRecords = Iterables.transform(deletes,
-              delete -> openDeletes(delete, deleteSchema));
+      Iterable<CloseableIterable<Record>> deleteRecords =
+          Iterables.transform(deletes, delete -> openDeletes(delete, deleteSchema));
 
-
-      CloseableIterable<InternalRecordWrapper> allDeleteRecords = CloseableIterable.transform(
-              CloseableIterable.concat(deleteRecords), wrapper::wrap);
-
+      CloseableIterable<InternalRecordWrapper> allDeleteRecords =
+          CloseableIterable.transform(CloseableIterable.concat(deleteRecords), wrapper::wrap);
 
       StructLikeSet deleteSet = StructLikeSet.create(deleteSchema.asStruct());
 
       for (InternalRecordWrapper deleteRecord : allDeleteRecords) {
-        //only reserve deleteKey which may be in data file.
+        // only reserve deleteKey which may be in data file.
         if (bloomFilter.mightContain(deleteRecord)) {
-          Record deleted = (Record)deleteRecord.get();
+          Record deleted = (Record) deleteRecord.get();
           // copy the delete record because they will be held in a set
-          InternalRecordWrapper copiedRecord = new InternalRecordWrapper(deleteSchema.asStruct()).wrap(deleted.copy());
+          InternalRecordWrapper copiedRecord =
+              new InternalRecordWrapper(deleteSchema.asStruct()).wrap(deleted.copy());
           deleteSet.add(copiedRecord);
         }
       }
-      Predicate<T> isInDeleteSet = record -> deleteSet.contains(projectRow.wrap(asStructLike(record)));
+      Predicate<T> isInDeleteSet =
+          record -> deleteSet.contains(projectRow.wrap(asStructLike(record)));
       isInDeleteSets.add(isInDeleteSet);
     }
     return isInDeleteSets;
   }
 
-
   public CloseableIterable<T> findEqualityDeleteRows(CloseableIterable<T> records) {
     // Predicate to test whether a row has been deleted by equality deletions.
-    Predicate<T> deletedRows = applyEqDeletesInternal().stream().reduce(Predicate::or).orElse(t -> false);
+    Predicate<T> deletedRows =
+        applyEqDeletesInternal().stream().reduce(Predicate::or).orElse(t -> false);
 
     return CloseableIterable.filter(records, deletedRows);
   }
 
   private CloseableIterable<T> applyEqDeletes(CloseableIterable<T> records) {
-    Predicate<T> isEqDeleted = applyEqDeletesInternal().stream().reduce(Predicate::or).orElse(t -> false);
+    Predicate<T> isEqDeleted =
+        applyEqDeletesInternal().stream().reduce(Predicate::or).orElse(t -> false);
 
     return createDeleteIterable(records, isEqDeleted);
   }
@@ -299,7 +305,10 @@ public abstract class DeleteFilter<T> {
   public Predicate<T> eqDeletedRowFilter() {
     if (eqDeleteRows == null) {
       eqDeleteRows =
-              applyEqDeletesInternal().stream().map(Predicate::negate).reduce(Predicate::and).orElse(t -> true);
+          applyEqDeletesInternal().stream()
+              .map(Predicate::negate)
+              .reduce(Predicate::and)
+              .orElse(t -> true);
     }
     return eqDeleteRows;
   }
@@ -332,8 +341,12 @@ public abstract class DeleteFilter<T> {
 
     return hasIsDeletedColumn
         ? Deletes.streamingMarker(
-            records, this::pos, Deletes.deletePositions(dataFile.path(), deletes), this::markRowDeleted)
-        : Deletes.streamingFilter(records, this::pos, Deletes.deletePositions(dataFile.path(), deletes));
+            records,
+            this::pos,
+            Deletes.deletePositions(dataFile.path(), deletes),
+            this::markRowDeleted)
+        : Deletes.streamingFilter(
+            records, this::pos, Deletes.deletePositions(dataFile.path(), deletes));
   }
 
   private CloseableIterable<T> createDeleteIterable(
@@ -347,37 +360,41 @@ public abstract class DeleteFilter<T> {
     return openDeletes(file, POS_DELETE_SCHEMA);
   }
 
-
   private CloseableIterable<Record> openDatas(DataFile dataFile, Schema deleteSchema) {
     InputFile input = getInputFile(dataFile.path().toString());
     switch (dataFile.format()) {
       case AVRO:
         return Avro.read(input)
-                .project(deleteSchema)
-                .reuseContainers()
-                .createReaderFunc(DataReader::create)
-                .build();
+            .project(deleteSchema)
+            .reuseContainers()
+            .createReaderFunc(DataReader::create)
+            .build();
 
       case PARQUET:
-        Parquet.ReadBuilder builder = Parquet.read(input)
+        Parquet.ReadBuilder builder =
+            Parquet.read(input)
                 .project(deleteSchema)
                 .reuseContainers()
-                .createReaderFunc(fileSchema -> GenericParquetReaders.buildReader(deleteSchema, fileSchema));
+                .createReaderFunc(
+                    fileSchema -> GenericParquetReaders.buildReader(deleteSchema, fileSchema));
         return builder.build();
 
       case ORC:
         // Reusing containers is automatic for ORC. No need to set 'reuseContainers' here.
-        ORC.ReadBuilder orcBuilder = ORC.read(input)
+        ORC.ReadBuilder orcBuilder =
+            ORC.read(input)
                 .project(deleteSchema)
-                .createReaderFunc(fileSchema -> GenericOrcReader.buildReader(deleteSchema, fileSchema));
+                .createReaderFunc(
+                    fileSchema -> GenericOrcReader.buildReader(deleteSchema, fileSchema));
 
         return orcBuilder.build();
       default:
-        throw new UnsupportedOperationException(String.format(
-                "Cannot read data, %s is not a supported format: %s", dataFile.path(), dataFile.format().name()));
+        throw new UnsupportedOperationException(
+            String.format(
+                "Cannot read data, %s is not a supported format: %s",
+                dataFile.path(), dataFile.format().name()));
     }
   }
-
 
   private CloseableIterable<Record> openDeletes(DeleteFile deleteFile, Schema deleteSchema) {
     InputFile input = getInputFile(deleteFile.path().toString());
@@ -398,7 +415,8 @@ public abstract class DeleteFilter<T> {
                     fileSchema -> GenericParquetReaders.buildReader(deleteSchema, fileSchema));
 
         if (deleteFile.content() == FileContent.POSITION_DELETES) {
-          builder.filter(Expressions.equal(MetadataColumns.DELETE_FILE_PATH.name(), dataFile.path()));
+          builder.filter(
+              Expressions.equal(MetadataColumns.DELETE_FILE_PATH.name(), dataFile.path()));
         }
 
         return builder.build();
@@ -412,7 +430,8 @@ public abstract class DeleteFilter<T> {
                     fileSchema -> GenericOrcReader.buildReader(deleteSchema, fileSchema));
 
         if (deleteFile.content() == FileContent.POSITION_DELETES) {
-          orcBuilder.filter(Expressions.equal(MetadataColumns.DELETE_FILE_PATH.name(), dataFile.path()));
+          orcBuilder.filter(
+              Expressions.equal(MetadataColumns.DELETE_FILE_PATH.name(), dataFile.path()));
         }
 
         return orcBuilder.build();
