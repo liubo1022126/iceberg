@@ -360,9 +360,9 @@ public abstract class DeleteFilter<T> {
     return openDeletes(file, POS_DELETE_SCHEMA);
   }
 
-  private CloseableIterable<Record> openDatas(DataFile dataFile, Schema deleteSchema) {
-    InputFile input = getInputFile(dataFile.path().toString());
-    switch (dataFile.format()) {
+  private CloseableIterable<Record> openDatas(DataFile dataFile4Open, Schema deleteSchema) {
+    InputFile input = getInputFile(dataFile4Open.path().toString());
+    switch (dataFile4Open.format()) {
       case AVRO:
         return Avro.read(input)
             .project(deleteSchema)
@@ -392,7 +392,7 @@ public abstract class DeleteFilter<T> {
         throw new UnsupportedOperationException(
             String.format(
                 "Cannot read data, %s is not a supported format: %s",
-                dataFile.path(), dataFile.format().name()));
+                dataFile4Open.path(), dataFile4Open.format().name()));
     }
   }
 
