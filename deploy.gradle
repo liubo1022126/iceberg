@@ -123,6 +123,13 @@ subprojects {
 
           name = 'localRepo'
           url = "/Users/liubo/Documents/resource/m2/repository/"
+
+//          url = 'https://maven.hellobike.cn/nexus/content/repositories/carkey-archjava-release'
+//          credentials {
+//            // 私服的用户与密码
+//            username 'archjava'
+//            password 'archjava123'
+//          }
         }
       }
     }

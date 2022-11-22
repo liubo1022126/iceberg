@@ -240,7 +240,7 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     // min(watermarkPerWriter).
     Long minWatermarkPerWriter =
         writeResultsOfCurrentCkpt.stream()
-            .map(r -> r.getWatermark())
+            .map(WriteResult::getWatermark)
             .filter(w -> w != WATERMARK_EMPTY_SKIP_VALUE)
             .min((w1, w2) -> w1 > w2 ? 1 : -1)
             .orElse(WATERMARK_VALUE_DEFAULT);

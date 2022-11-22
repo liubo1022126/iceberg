@@ -20,6 +20,7 @@ package org.apache.iceberg.data;
 
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -140,52 +141,6 @@ public abstract class DeleteFilter<T> {
     return applyEqDeletes(applyPosDeletes(records));
   }
 
-  private List<Predicate<T>> applyEqDeletes() {
-    if (isInDeleteSets != null) {
-      return isInDeleteSets;
-    }
-
-    isInDeleteSets = Lists.newArrayList();
-    if (eqDeletes.isEmpty()) {
-      return isInDeleteSets;
-    }
-
-    Multimap<Set<Integer>, DeleteFile> filesByDeleteIds =
-        Multimaps.newMultimap(Maps.newHashMap(), Lists::newArrayList);
-    for (DeleteFile delete : eqDeletes) {
-      filesByDeleteIds.put(Sets.newHashSet(delete.equalityFieldIds()), delete);
-    }
-
-    for (Map.Entry<Set<Integer>, Collection<DeleteFile>> entry :
-        filesByDeleteIds.asMap().entrySet()) {
-      Set<Integer> ids = entry.getKey();
-      Iterable<DeleteFile> deletes = entry.getValue();
-
-      Schema deleteSchema = TypeUtil.select(requiredSchema, ids);
-      InternalRecordWrapper wrapper = new InternalRecordWrapper(deleteSchema.asStruct());
-
-      // a projection to select and reorder fields of the file schema to match the delete rows
-      StructProjection projectRow = StructProjection.create(requiredSchema, deleteSchema);
-
-      Iterable<CloseableIterable<Record>> deleteRecords =
-          Iterables.transform(deletes, delete -> openDeletes(delete, deleteSchema));
-
-      // copy the delete records because they will be held in a set
-      CloseableIterable<Record> records =
-          CloseableIterable.transform(CloseableIterable.concat(deleteRecords), Record::copy);
-
-      StructLikeSet deleteSet =
-          Deletes.toEqualitySet(
-              CloseableIterable.transform(records, wrapper::copyFor), deleteSchema.asStruct());
-
-      Predicate<T> isInDeleteSet =
-          record -> deleteSet.contains(projectRow.wrap(asStructLike(record)));
-      isInDeleteSets.add(isInDeleteSet);
-    }
-
-    return isInDeleteSets;
-  }
-
   private List<Predicate<T>> applyEqDeletesInternal() {
     if (isInDeleteSets != null) {
       return isInDeleteSets;
@@ -233,7 +188,7 @@ public abstract class DeleteFilter<T> {
                 } else if (value instanceof CharSequence) {
                   primitiveSink.putUnencodedChars((CharSequence) value);
                 } else if (value instanceof UUID || value instanceof BigDecimal) {
-                  primitiveSink.putBytes(value.toString().getBytes());
+                  primitiveSink.putBytes(value.toString().getBytes(StandardCharsets.UTF_8));
                 } else if (value instanceof ByteBuffer) {
                   primitiveSink.putBytes((ByteBuffer) value);
                 } else if (value instanceof InternalRecordWrapper) {

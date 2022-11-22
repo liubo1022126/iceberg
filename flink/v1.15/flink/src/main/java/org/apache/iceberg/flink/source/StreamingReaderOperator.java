@@ -18,6 +18,7 @@
  */
 package org.apache.iceberg.flink.source;
 
+import java.io.IOException;
 import java.util.Queue;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -165,7 +166,7 @@ public class StreamingReaderOperator extends AbstractStreamOperator<RowData>
     }
   }
 
-  private void processSplits() throws Exception {
+  private void processSplits() throws IOException, InterruptedException {
     FlinkInputSplit split = splits.poll();
     if (split == null) {
       currentSplitState = SplitState.IDLE;
