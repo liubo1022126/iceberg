@@ -106,6 +106,10 @@ subprojects {
       if (project.name != 'iceberg-bundled-guava') {
         exclude group: 'com.google.guava', module: 'guava'
       }
+      if (project.name != 'iceberg-bundled-hellobike') {
+        exclude group: 'org.roaringbitmap', module: 'RoaringBitmap'
+        exclude group: 'org.roaringbitmap', module: 'shims'
+      }
       // contains a copy of Guava
       exclude group: 'org.apache.spark', module: 'spark-network-common_2.12'
     }
@@ -217,6 +221,41 @@ project(':iceberg-bundled-guava') {
   }
 }
 
+project(':iceberg-bundled-hellobike') {
+  apply plugin: 'com.github.johnrengelman.shadow'
+
+  tasks.jar.dependsOn tasks.shadowJar
+
+  dependencies {
+    compileOnly 'org.roaringbitmap:RoaringBitmap'
+    compileOnly 'org.roaringbitmap:shims'
+  }
+
+  shadowJar {
+    classifier null
+    configurations = [project.configurations.compileClasspath]
+    zip64 true
+
+    // include the LICENSE and NOTICE files for the shaded Jar
+    from(projectDir) {
+      include 'LICENSE'
+      include 'NOTICE'
+    }
+
+    dependencies {
+      exclude(dependency('com.github.stephenc.findbugs:findbugs-annotations'))
+      exclude(dependency('org.slf4j:slf4j-api'))
+      exclude(dependency('org.checkerframework:checker-qual'))
+    }
+
+    relocate 'org.roaringbitmap', 'org.apache.iceberg.relocated.org.roaringbitmap'
+  }
+
+  jar {
+    archiveClassifier = 'empty'
+  }
+}
+
 project(':iceberg-api') {
   apply plugin: 'com.palantir.revapi'
 
@@ -252,6 +291,7 @@ project(':iceberg-core') {
     api project(':iceberg-api')
     implementation project(':iceberg-common')
     implementation project(path: ':iceberg-bundled-guava', configuration: 'shadow')
+    implementation project(path: ':iceberg-bundled-hellobike', configuration: 'shadow')
 
     implementation("org.apache.avro:avro") {
       exclude group: 'org.tukaani' // xz compression is not supported
@@ -262,7 +302,6 @@ project(':iceberg-core') {
     implementation "com.fasterxml.jackson.core:jackson-databind"
     implementation "com.fasterxml.jackson.core:jackson-core"
     implementation "com.github.ben-manes.caffeine:caffeine"
-    implementation "org.roaringbitmap:RoaringBitmap"
     compileOnly("org.apache.hadoop:hadoop-client") {
       exclude group: 'org.apache.avro', module: 'avro'
       exclude group: 'org.slf4j', module: 'slf4j-log4j12'
