@@ -56,6 +56,9 @@ public class ScanContext implements Serializable {
   private static final ConfigOption<Long> START_SNAPSHOT_TIMESTAMP =
       ConfigOptions.key("start-snapshot-timestamp").longType().defaultValue(null);
 
+  private static final ConfigOption<Long> END_SNAPSHOT_TIMESTAMP =
+      ConfigOptions.key("end-snapshot-timestamp").longType().defaultValue(null);
+
   private static final ConfigOption<Long> START_SNAPSHOT_ID =
       ConfigOptions.key("start-snapshot-id").longType().defaultValue(null);
 
@@ -89,6 +92,7 @@ public class ScanContext implements Serializable {
   private final StreamingStartingStrategy startingStrategy;
   private final Long startSnapshotId;
   private final Long startSnapshotTimestamp;
+  private final Long endSnapshotTimestamp;
   private final Long endSnapshotId;
   private final Long asOfTimestamp;
   private final Long splitSize;
@@ -110,6 +114,7 @@ public class ScanContext implements Serializable {
       Long snapshotId,
       StreamingStartingStrategy startingStrategy,
       Long startSnapshotTimestamp,
+      Long endSnapshotTimestamp,
       Long startSnapshotId,
       Long endSnapshotId,
       Long asOfTimestamp,
@@ -130,6 +135,7 @@ public class ScanContext implements Serializable {
     this.snapshotId = snapshotId;
     this.startingStrategy = startingStrategy;
     this.startSnapshotTimestamp = startSnapshotTimestamp;
+    this.endSnapshotTimestamp = endSnapshotTimestamp;
     this.startSnapshotId = startSnapshotId;
     this.endSnapshotId = endSnapshotId;
     this.asOfTimestamp = asOfTimestamp;
@@ -152,23 +158,27 @@ public class ScanContext implements Serializable {
   }
 
   private void validate() {
-    if (isStreaming) {
-      if (startingStrategy == StreamingStartingStrategy.INCREMENTAL_FROM_SNAPSHOT_ID) {
-        Preconditions.checkArgument(
-            startSnapshotId != null,
-            "Invalid starting snapshot id for SPECIFIC_START_SNAPSHOT_ID strategy: null");
-        Preconditions.checkArgument(
-            startSnapshotTimestamp == null,
-            "Invalid starting snapshot timestamp for SPECIFIC_START_SNAPSHOT_ID strategy: not null");
-      }
-      if (startingStrategy == StreamingStartingStrategy.INCREMENTAL_FROM_SNAPSHOT_TIMESTAMP) {
-        Preconditions.checkArgument(
-            startSnapshotTimestamp != null,
-            "Invalid starting snapshot timestamp for SPECIFIC_START_SNAPSHOT_TIMESTAMP strategy: null");
-        Preconditions.checkArgument(
-            startSnapshotId == null,
-            "Invalid starting snapshot id for SPECIFIC_START_SNAPSHOT_ID strategy: not null");
-      }
+    if (startingStrategy == StreamingStartingStrategy.INCREMENTAL_FROM_SNAPSHOT_ID) {
+      Preconditions.checkArgument(
+          startSnapshotId != null,
+          "Invalid starting snapshot id for SPECIFIC_START_SNAPSHOT_ID strategy: null");
+      Preconditions.checkArgument(
+          startSnapshotTimestamp == null,
+          "Invalid starting snapshot timestamp for SPECIFIC_START_SNAPSHOT_ID strategy: not null");
+      Preconditions.checkArgument(
+          endSnapshotTimestamp == null,
+          "Invalid ending snapshot timestamp for SPECIFIC_START_SNAPSHOT_ID strategy: not null");
+    }
+    if (startingStrategy == StreamingStartingStrategy.INCREMENTAL_FROM_SNAPSHOT_TIMESTAMP) {
+      Preconditions.checkArgument(
+          startSnapshotTimestamp != null,
+          "Invalid starting snapshot timestamp for SPECIFIC_START_SNAPSHOT_TIMESTAMP strategy: null");
+      Preconditions.checkArgument(
+          startSnapshotId == null,
+          "Invalid starting snapshot id for SPECIFIC_START_SNAPSHOT_TIMESTAMP strategy: not null");
+      Preconditions.checkArgument(
+          endSnapshotId == null,
+          "Invalid ending snapshot id for SPECIFIC_START_SNAPSHOT_TIMESTAMP strategy: not null");
     }
   }
 
@@ -186,6 +196,10 @@ public class ScanContext implements Serializable {
 
   public Long startSnapshotTimestamp() {
     return startSnapshotTimestamp;
+  }
+
+  public Long endSnapshotTimestamp() {
+    return endSnapshotTimestamp;
   }
 
   public Long startSnapshotId() {
@@ -307,6 +321,7 @@ public class ScanContext implements Serializable {
     private Long snapshotId = SNAPSHOT_ID.defaultValue();
     private StreamingStartingStrategy startingStrategy = STARTING_STRATEGY.defaultValue();
     private Long startSnapshotTimestamp = START_SNAPSHOT_TIMESTAMP.defaultValue();
+    private Long endSnapshotTimestamp = END_SNAPSHOT_TIMESTAMP.defaultValue();
     private Long startSnapshotId = START_SNAPSHOT_ID.defaultValue();
     private Long endSnapshotId = END_SNAPSHOT_ID.defaultValue();
     private Long asOfTimestamp = AS_OF_TIMESTAMP.defaultValue();
@@ -344,6 +359,11 @@ public class ScanContext implements Serializable {
 
     public Builder startSnapshotTimestamp(Long newStartSnapshotTimestamp) {
       this.startSnapshotTimestamp = newStartSnapshotTimestamp;
+      return this;
+    }
+
+    public Builder endSnapshotTimestamp(Long newEndSnapshotTimestamp) {
+      this.endSnapshotTimestamp = newEndSnapshotTimestamp;
       return this;
     }
 
@@ -436,6 +456,7 @@ public class ScanContext implements Serializable {
           .asOfTimestamp(config.get(AS_OF_TIMESTAMP))
           .startingStrategy(config.get(STARTING_STRATEGY))
           .startSnapshotTimestamp(config.get(START_SNAPSHOT_TIMESTAMP))
+          .endSnapshotTimestamp(config.get(END_SNAPSHOT_TIMESTAMP))
           .startSnapshotId(config.get(START_SNAPSHOT_ID))
           .endSnapshotId(config.get(END_SNAPSHOT_ID))
           .splitSize(config.get(SPLIT_SIZE))
@@ -454,6 +475,7 @@ public class ScanContext implements Serializable {
           snapshotId,
           startingStrategy,
           startSnapshotTimestamp,
+          endSnapshotTimestamp,
           startSnapshotId,
           endSnapshotId,
           asOfTimestamp,

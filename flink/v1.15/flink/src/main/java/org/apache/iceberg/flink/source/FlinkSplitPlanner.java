@@ -35,6 +35,7 @@ import org.apache.iceberg.flink.source.split.IcebergSourceSplit;
 import org.apache.iceberg.hadoop.Util;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.apache.iceberg.util.SnapshotUtil;
 import org.apache.iceberg.util.Tasks;
 
 @Internal
@@ -86,12 +87,25 @@ public class FlinkSplitPlanner {
       IncrementalAppendScan scan = table.newIncrementalAppendScan();
       scan = refineScanWithBaseConfigs(scan, context, workerPool);
 
-      if (context.startSnapshotId() != null) {
-        scan = scan.fromSnapshotExclusive(context.startSnapshotId());
-      }
-
-      if (context.endSnapshotId() != null) {
-        scan = scan.toSnapshot(context.endSnapshotId());
+      if (context.streamingStartingStrategy()
+          == StreamingStartingStrategy.INCREMENTAL_FROM_SNAPSHOT_TIMESTAMP) {
+        if (context.startSnapshotTimestamp() != null) {
+          long startSnapshotIdAsOfTime =
+              SnapshotUtil.snapshotIdAsOfTime(table, context.startSnapshotTimestamp());
+          scan = scan.fromSnapshotExclusive(startSnapshotIdAsOfTime);
+        }
+        if (context.endSnapshotTimestamp() != null) {
+          long endSnapshotIdAsOfTime =
+              SnapshotUtil.snapshotIdAsOfTime(table, context.endSnapshotTimestamp());
+          scan = scan.toSnapshot(endSnapshotIdAsOfTime);
+        }
+      } else {
+        if (context.startSnapshotId() != null) {
+          scan = scan.fromSnapshotExclusive(context.startSnapshotId());
+        }
+        if (context.endSnapshotId() != null) {
+          scan = scan.toSnapshot(context.endSnapshotId());
+        }
       }
 
       return scan.planTasks();
@@ -119,7 +133,9 @@ public class FlinkSplitPlanner {
   private static ScanMode checkScanMode(ScanContext context) {
     if (context.isStreaming()
         || context.startSnapshotId() != null
-        || context.endSnapshotId() != null) {
+        || context.endSnapshotId() != null
+        || context.startSnapshotTimestamp() != null
+        || context.endSnapshotTimestamp() != null) {
       return ScanMode.INCREMENTAL_APPEND_SCAN;
     } else {
       return ScanMode.BATCH;
