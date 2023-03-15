@@ -86,6 +86,10 @@ class BaseIncrementalAppendScan
       return CloseableIterable.empty();
     }
 
+    if (!context().fromSnapshotInclusive() && fromSnapshotId.equals(toSnapshotId)) {
+      return CloseableIterable.empty();
+    }
+
     long toSnapshotIdInclusive = toSnapshotIdInclusive();
     // fromSnapshotIdExclusive can be null. appendsBetween handles null fromSnapshotIdExclusive
     // properly
