@@ -30,10 +30,14 @@ import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.util.SnapshotUtil;
 import org.apache.iceberg.util.TableScanUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 class BaseIncrementalAppendScan
     extends BaseScan<IncrementalAppendScan, FileScanTask, CombinedScanTask>
     implements IncrementalAppendScan {
+
+  private static final Logger LOG = LoggerFactory.getLogger(BaseIncrementalAppendScan.class);
 
   BaseIncrementalAppendScan(TableOperations ops, Table table) {
     this(ops, table, table.schema(), new TableScanContext());
@@ -85,6 +89,8 @@ class BaseIncrementalAppendScan
       // simply return an empty iterable. In this case, listener notification is also skipped.
       return CloseableIterable.empty();
     }
+
+    LOG.info("fromSnapshotId is {} and toSnapshotId is {}", fromSnapshotId, toSnapshotId);
 
     if (!context().fromSnapshotInclusive() && fromSnapshotId.equals(toSnapshotId)) {
       return CloseableIterable.empty();

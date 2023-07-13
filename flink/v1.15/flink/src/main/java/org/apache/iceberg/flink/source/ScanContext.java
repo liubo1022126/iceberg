@@ -22,6 +22,7 @@ import static org.apache.iceberg.TableProperties.DEFAULT_NAME_MAPPING;
 
 import java.io.Serializable;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.apache.flink.annotation.Internal;
@@ -59,6 +60,9 @@ public class ScanContext implements Serializable {
   private static final ConfigOption<Long> END_SNAPSHOT_TIMESTAMP =
       ConfigOptions.key("end-snapshot-timestamp").longType().defaultValue(null);
 
+  private static final ConfigOption<String> BETWEEN_MODE =
+      ConfigOptions.key("between-mode").stringType().defaultValue("l0r1");
+
   private static final ConfigOption<Long> START_SNAPSHOT_ID =
       ConfigOptions.key("start-snapshot-id").longType().defaultValue(null);
 
@@ -93,6 +97,7 @@ public class ScanContext implements Serializable {
   private final Long startSnapshotId;
   private final Long startSnapshotTimestamp;
   private final Long endSnapshotTimestamp;
+  private final String betweenMode;
   private final Long endSnapshotId;
   private final Long asOfTimestamp;
   private final Long splitSize;
@@ -115,6 +120,7 @@ public class ScanContext implements Serializable {
       StreamingStartingStrategy startingStrategy,
       Long startSnapshotTimestamp,
       Long endSnapshotTimestamp,
+      String betweenMode,
       Long startSnapshotId,
       Long endSnapshotId,
       Long asOfTimestamp,
@@ -136,6 +142,7 @@ public class ScanContext implements Serializable {
     this.startingStrategy = startingStrategy;
     this.startSnapshotTimestamp = startSnapshotTimestamp;
     this.endSnapshotTimestamp = endSnapshotTimestamp;
+    this.betweenMode = betweenMode;
     this.startSnapshotId = startSnapshotId;
     this.endSnapshotId = endSnapshotId;
     this.asOfTimestamp = asOfTimestamp;
@@ -179,6 +186,9 @@ public class ScanContext implements Serializable {
       Preconditions.checkArgument(
           endSnapshotId == null,
           "Invalid ending snapshot id for SPECIFIC_START_SNAPSHOT_TIMESTAMP strategy: not null");
+      Preconditions.checkArgument(
+          betweenMode == null || Arrays.asList("l0r1", "l1r1").contains(betweenMode),
+          "Invalid ending snapshot id for SPECIFIC_START_SNAPSHOT_TIMESTAMP strategy: not null");
     }
   }
 
@@ -200,6 +210,10 @@ public class ScanContext implements Serializable {
 
   public Long endSnapshotTimestamp() {
     return endSnapshotTimestamp;
+  }
+
+  public String betweenMode() {
+    return betweenMode;
   }
 
   public Long startSnapshotId() {
@@ -322,6 +336,7 @@ public class ScanContext implements Serializable {
     private StreamingStartingStrategy startingStrategy = STARTING_STRATEGY.defaultValue();
     private Long startSnapshotTimestamp = START_SNAPSHOT_TIMESTAMP.defaultValue();
     private Long endSnapshotTimestamp = END_SNAPSHOT_TIMESTAMP.defaultValue();
+    private String betweenMode = BETWEEN_MODE.defaultValue();
     private Long startSnapshotId = START_SNAPSHOT_ID.defaultValue();
     private Long endSnapshotId = END_SNAPSHOT_ID.defaultValue();
     private Long asOfTimestamp = AS_OF_TIMESTAMP.defaultValue();
@@ -364,6 +379,11 @@ public class ScanContext implements Serializable {
 
     public Builder endSnapshotTimestamp(Long newEndSnapshotTimestamp) {
       this.endSnapshotTimestamp = newEndSnapshotTimestamp;
+      return this;
+    }
+
+    public Builder betweenMode(String newBetweenMode) {
+      this.betweenMode = newBetweenMode;
       return this;
     }
 
@@ -457,6 +477,7 @@ public class ScanContext implements Serializable {
           .startingStrategy(config.get(STARTING_STRATEGY))
           .startSnapshotTimestamp(config.get(START_SNAPSHOT_TIMESTAMP))
           .endSnapshotTimestamp(config.get(END_SNAPSHOT_TIMESTAMP))
+          .betweenMode(config.get(BETWEEN_MODE))
           .startSnapshotId(config.get(START_SNAPSHOT_ID))
           .endSnapshotId(config.get(END_SNAPSHOT_ID))
           .splitSize(config.get(SPLIT_SIZE))
@@ -476,6 +497,7 @@ public class ScanContext implements Serializable {
           startingStrategy,
           startSnapshotTimestamp,
           endSnapshotTimestamp,
+          betweenMode,
           startSnapshotId,
           endSnapshotId,
           asOfTimestamp,

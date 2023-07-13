@@ -80,6 +80,30 @@ public class FlinkSplitPlanner {
     }
   }
 
+  static IncrementalAppendScan betweenStrategyPadding(
+      IncrementalAppendScan scan, Long startSnapshotId, Long endSnapshotId, String betweenMode) {
+    IncrementalAppendScan paddingScan = scan;
+
+    if (BetweenMode.l0r1.toString().equals(betweenMode)) {
+      if (startSnapshotId != null) {
+        paddingScan = paddingScan.fromSnapshotExclusive(startSnapshotId);
+      }
+      if (endSnapshotId != null) {
+        paddingScan = paddingScan.toSnapshot(endSnapshotId);
+      }
+    }
+    if (BetweenMode.l1r1.toString().equals(betweenMode)) {
+      if (startSnapshotId != null) {
+        paddingScan = paddingScan.fromSnapshotInclusive(startSnapshotId);
+      }
+      if (endSnapshotId != null) {
+        paddingScan = paddingScan.toSnapshot(endSnapshotId);
+      }
+    }
+
+    return paddingScan;
+  }
+
   static CloseableIterable<CombinedScanTask> planTasks(
       Table table, ScanContext context, ExecutorService workerPool) {
     ScanMode scanMode = checkScanMode(context);
@@ -87,26 +111,21 @@ public class FlinkSplitPlanner {
       IncrementalAppendScan scan = table.newIncrementalAppendScan();
       scan = refineScanWithBaseConfigs(scan, context, workerPool);
 
+      Long startSnapshotId = context.startSnapshotId();
+      Long endSnapshotId = context.endSnapshotId();
+
       if (context.streamingStartingStrategy()
           == StreamingStartingStrategy.INCREMENTAL_FROM_SNAPSHOT_TIMESTAMP) {
         if (context.startSnapshotTimestamp() != null) {
-          long startSnapshotIdAsOfTime =
+          startSnapshotId =
               SnapshotUtil.snapshotIdAsOfTime(table, context.startSnapshotTimestamp());
-          scan = scan.fromSnapshotExclusive(startSnapshotIdAsOfTime);
         }
         if (context.endSnapshotTimestamp() != null) {
-          long endSnapshotIdAsOfTime =
-              SnapshotUtil.snapshotIdAsOfTime(table, context.endSnapshotTimestamp());
-          scan = scan.toSnapshot(endSnapshotIdAsOfTime);
-        }
-      } else {
-        if (context.startSnapshotId() != null) {
-          scan = scan.fromSnapshotExclusive(context.startSnapshotId());
-        }
-        if (context.endSnapshotId() != null) {
-          scan = scan.toSnapshot(context.endSnapshotId());
+          endSnapshotId = SnapshotUtil.snapshotIdAsOfTime(table, context.endSnapshotTimestamp());
         }
       }
+
+      scan = betweenStrategyPadding(scan, startSnapshotId, endSnapshotId, context.betweenMode());
 
       return scan.planTasks();
     } else {
@@ -128,6 +147,11 @@ public class FlinkSplitPlanner {
   private enum ScanMode {
     BATCH,
     INCREMENTAL_APPEND_SCAN
+  }
+
+  private enum BetweenMode {
+    l0r1,
+    l1r1
   }
 
   private static ScanMode checkScanMode(ScanContext context) {
