@@ -241,7 +241,9 @@ public class FlinkSource {
         if (env.getMaxParallelism() > 0) {
           parallelism = Math.min(parallelism, env.getMaxParallelism());
         }
-        return env.createInput(format, typeInfo).setParallelism(parallelism);
+        return env.createInput(format, typeInfo)
+            .name(String.format("Iceberg table (%s) Source", table))
+            .setParallelism(parallelism);
       } else {
         StreamingMonitorFunction function = new StreamingMonitorFunction(tableLoader, context);
 
@@ -252,6 +254,7 @@ public class FlinkSource {
         long readSplitWaitTime = readableConfig.get(FlinkConfigOptions.READ_SPLIT_WAIT_TIME);
 
         return env.addSource(function, monitorFunctionName)
+            .name(String.format("Iceberg table (%s) Source", table))
             .transform(
                 readerOperatorName,
                 typeInfo,
