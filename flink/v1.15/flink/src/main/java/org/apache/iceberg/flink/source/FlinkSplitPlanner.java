@@ -37,9 +37,13 @@ import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.util.SnapshotUtil;
 import org.apache.iceberg.util.Tasks;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Internal
 public class FlinkSplitPlanner {
+  private static final Logger LOG = LoggerFactory.getLogger(FlinkSplitPlanner.class);
+
   private FlinkSplitPlanner() {}
 
   static FlinkInputSplit[] planInputSplits(
@@ -50,6 +54,7 @@ public class FlinkSplitPlanner {
       FlinkInputSplit[] splits = new FlinkInputSplit[tasks.size()];
       boolean exposeLocality = context.exposeLocality();
 
+      LOG.info("begin to build FlinkInputSplit[].");
       Tasks.range(tasks.size())
           .stopOnFailure()
           .executeWith(exposeLocality ? workerPool : null)
@@ -58,10 +63,11 @@ public class FlinkSplitPlanner {
                 CombinedScanTask task = tasks.get(index);
                 String[] hostnames = null;
                 if (exposeLocality) {
-                  hostnames = Util.blockLocations(table.io(), task);
+                  hostnames = Util.blockLocationsMutiFs(table.io(), task);
                 }
                 splits[index] = new FlinkInputSplit(index, task, hostnames);
               });
+      LOG.info("end to build FlinkInputSplit[].");
       return splits;
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to process tasks iterable", e);
