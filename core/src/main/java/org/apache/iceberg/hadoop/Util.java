@@ -83,15 +83,12 @@ public class Util {
 
   public static String[] blockLocationsMutiFs(FileIO io, CombinedScanTask task) {
     Set<String> locationSets = Sets.newHashSet();
-
     if (io instanceof HadoopFileIO) {
       Configuration conf = ((HadoopFileIO) io).getConf();
-
       for (FileScanTask f : task.files()) {
         Path path = new Path(f.file().path().toString());
         try {
           URI uri = path.getFileSystem(conf).getUri();
-
           FileSystem fs;
           Key key = new Key(uri, conf);
           synchronized (fsCacheLock) {
@@ -105,11 +102,6 @@ public class Util {
               fs = fsCache.get(key).get(fsCacheGetter.nextInt(FS_MAX_SIZE_PER_KEY));
             }
           }
-          LOG.info(
-              "blockLocationsMutiFs fs hashcode:{}, thread name:{}, thread id:",
-              System.identityHashCode(fs),
-              Thread.currentThread().getName(),
-              Thread.currentThread().getId());
 
           for (BlockLocation b : fs.getFileBlockLocations(path, f.start(), f.length())) {
             locationSets.addAll(Arrays.asList(b.getHosts()));
