@@ -20,6 +20,7 @@ package org.apache.iceberg.flink.source;
 
 import java.io.Serializable;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.apache.flink.annotation.Internal;
@@ -47,6 +48,8 @@ public class ScanContext implements Serializable {
   private final StreamingStartingStrategy startingStrategy;
   private final Long startSnapshotId;
   private final Long startSnapshotTimestamp;
+  private final Long endSnapshotTimestamp;
+  private final String betweenMode;
   private final Long endSnapshotId;
   private final Long asOfTimestamp;
   private final String startTag;
@@ -71,6 +74,8 @@ public class ScanContext implements Serializable {
       Long snapshotId,
       StreamingStartingStrategy startingStrategy,
       Long startSnapshotTimestamp,
+      Long endSnapshotTimestamp,
+      String betweenMode,
       Long startSnapshotId,
       Long endSnapshotId,
       Long asOfTimestamp,
@@ -98,6 +103,8 @@ public class ScanContext implements Serializable {
     this.branch = branch;
     this.startingStrategy = startingStrategy;
     this.startSnapshotTimestamp = startSnapshotTimestamp;
+    this.endSnapshotTimestamp = endSnapshotTimestamp;
+    this.betweenMode = betweenMode;
     this.startSnapshotId = startSnapshotId;
     this.endSnapshotId = endSnapshotId;
     this.asOfTimestamp = asOfTimestamp;
@@ -124,23 +131,6 @@ public class ScanContext implements Serializable {
 
   private void validate() {
     if (isStreaming) {
-      if (startingStrategy == StreamingStartingStrategy.INCREMENTAL_FROM_SNAPSHOT_ID) {
-        Preconditions.checkArgument(
-            startSnapshotId != null,
-            "Invalid starting snapshot id for SPECIFIC_START_SNAPSHOT_ID strategy: null");
-        Preconditions.checkArgument(
-            startSnapshotTimestamp == null,
-            "Invalid starting snapshot timestamp for SPECIFIC_START_SNAPSHOT_ID strategy: not null");
-      }
-      if (startingStrategy == StreamingStartingStrategy.INCREMENTAL_FROM_SNAPSHOT_TIMESTAMP) {
-        Preconditions.checkArgument(
-            startSnapshotTimestamp != null,
-            "Invalid starting snapshot timestamp for SPECIFIC_START_SNAPSHOT_TIMESTAMP strategy: null");
-        Preconditions.checkArgument(
-            startSnapshotId == null,
-            "Invalid starting snapshot id for SPECIFIC_START_SNAPSHOT_ID strategy: not null");
-      }
-
       Preconditions.checkArgument(
           branch == null,
           String.format(
@@ -149,6 +139,32 @@ public class ScanContext implements Serializable {
       Preconditions.checkArgument(
           tag == null,
           String.format("Cannot scan table using ref %s configured for streaming reader", tag));
+    }
+
+    if (startingStrategy == StreamingStartingStrategy.INCREMENTAL_FROM_SNAPSHOT_ID) {
+      Preconditions.checkArgument(
+          startSnapshotId != null,
+          "Invalid starting snapshot id for SPECIFIC_START_SNAPSHOT_ID strategy: null");
+      Preconditions.checkArgument(
+          startSnapshotTimestamp == null,
+          "Invalid starting snapshot timestamp for SPECIFIC_START_SNAPSHOT_ID strategy: not null");
+      Preconditions.checkArgument(
+          endSnapshotTimestamp == null,
+          "Invalid ending snapshot timestamp for SPECIFIC_START_SNAPSHOT_ID strategy: not null");
+    }
+    if (startingStrategy == StreamingStartingStrategy.INCREMENTAL_FROM_SNAPSHOT_TIMESTAMP) {
+      Preconditions.checkArgument(
+          startSnapshotTimestamp != null,
+          "Invalid starting snapshot timestamp for SPECIFIC_START_SNAPSHOT_TIMESTAMP strategy: null");
+      Preconditions.checkArgument(
+          startSnapshotId == null,
+          "Invalid starting snapshot id for SPECIFIC_START_SNAPSHOT_TIMESTAMP strategy: not null");
+      Preconditions.checkArgument(
+          endSnapshotId == null,
+          "Invalid ending snapshot id for SPECIFIC_START_SNAPSHOT_TIMESTAMP strategy: not null");
+      Preconditions.checkArgument(
+          betweenMode == null || Arrays.asList("l0r1", "l1r1").contains(betweenMode),
+          "Invalid ending snapshot id for SPECIFIC_START_SNAPSHOT_TIMESTAMP strategy: not null");
     }
 
     Preconditions.checkArgument(
@@ -194,6 +210,14 @@ public class ScanContext implements Serializable {
 
   public Long startSnapshotTimestamp() {
     return startSnapshotTimestamp;
+  }
+
+  public Long endSnapshotTimestamp() {
+    return endSnapshotTimestamp;
+  }
+
+  public String betweenMode() {
+    return betweenMode;
   }
 
   public Long startSnapshotId() {
@@ -334,6 +358,8 @@ public class ScanContext implements Serializable {
     private StreamingStartingStrategy startingStrategy =
         FlinkReadOptions.STARTING_STRATEGY_OPTION.defaultValue();
     private Long startSnapshotTimestamp = FlinkReadOptions.START_SNAPSHOT_TIMESTAMP.defaultValue();
+    private Long endSnapshotTimestamp = FlinkReadOptions.END_SNAPSHOT_TIMESTAMP.defaultValue();
+    private String betweenMode = FlinkReadOptions.BETWEEN_MODE.defaultValue();
     private Long startSnapshotId = FlinkReadOptions.START_SNAPSHOT_ID.defaultValue();
     private Long endSnapshotId = FlinkReadOptions.END_SNAPSHOT_ID.defaultValue();
     private Long asOfTimestamp = FlinkReadOptions.AS_OF_TIMESTAMP.defaultValue();
@@ -386,6 +412,16 @@ public class ScanContext implements Serializable {
 
     public Builder startSnapshotTimestamp(Long newStartSnapshotTimestamp) {
       this.startSnapshotTimestamp = newStartSnapshotTimestamp;
+      return this;
+    }
+
+    public Builder endSnapshotTimestamp(Long newEndSnapshotTimestamp) {
+      this.endSnapshotTimestamp = newEndSnapshotTimestamp;
+      return this;
+    }
+
+    public Builder betweenMode(String newBetweenMode) {
+      this.betweenMode = newBetweenMode;
       return this;
     }
 
@@ -497,6 +533,8 @@ public class ScanContext implements Serializable {
           .asOfTimestamp(flinkReadConf.asOfTimestamp())
           .startingStrategy(flinkReadConf.startingStrategy())
           .startSnapshotTimestamp(flinkReadConf.startSnapshotTimestamp())
+          .endSnapshotTimestamp(flinkReadConf.endSnapshotTimestamp())
+          .betweenMode(flinkReadConf.betweenMode())
           .startSnapshotId(flinkReadConf.startSnapshotId())
           .endSnapshotId(flinkReadConf.endSnapshotId())
           .splitSize(flinkReadConf.splitSize())
@@ -518,6 +556,8 @@ public class ScanContext implements Serializable {
           snapshotId,
           startingStrategy,
           startSnapshotTimestamp,
+          endSnapshotTimestamp,
+          betweenMode,
           startSnapshotId,
           endSnapshotId,
           asOfTimestamp,

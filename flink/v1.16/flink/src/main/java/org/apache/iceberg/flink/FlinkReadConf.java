@@ -84,6 +84,21 @@ public class FlinkReadConf {
         .parseOptional();
   }
 
+  public Long endSnapshotTimestamp() {
+    return confParser
+        .longConf()
+        .option(FlinkReadOptions.END_SNAPSHOT_TIMESTAMP.key())
+        .parseOptional();
+  }
+
+  public String betweenMode() {
+    return confParser
+        .stringConf()
+        .option(FlinkReadOptions.BETWEEN_MODE.key())
+        .defaultValue(FlinkReadOptions.BETWEEN_MODE.defaultValue())
+        .parse();
+  }
+
   public Long startSnapshotId() {
     return confParser.longConf().option(FlinkReadOptions.START_SNAPSHOT_ID.key()).parseOptional();
   }

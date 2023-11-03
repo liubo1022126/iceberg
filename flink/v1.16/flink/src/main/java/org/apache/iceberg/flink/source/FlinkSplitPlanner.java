@@ -37,10 +37,15 @@ import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.relocated.com.google.common.annotations.VisibleForTesting;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
+import org.apache.iceberg.util.SnapshotUtil;
 import org.apache.iceberg.util.Tasks;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Internal
 public class FlinkSplitPlanner {
+  private static final Logger LOG = LoggerFactory.getLogger(FlinkSplitPlanner.class);
+
   private FlinkSplitPlanner() {}
 
   static FlinkInputSplit[] planInputSplits(
@@ -51,6 +56,7 @@ public class FlinkSplitPlanner {
       FlinkInputSplit[] splits = new FlinkInputSplit[tasks.size()];
       boolean exposeLocality = context.exposeLocality();
 
+      LOG.info("begin to build FlinkInputSplit[].");
       Tasks.range(tasks.size())
           .stopOnFailure()
           .executeWith(exposeLocality ? workerPool : null)
@@ -59,10 +65,11 @@ public class FlinkSplitPlanner {
                 CombinedScanTask task = tasks.get(index);
                 String[] hostnames = null;
                 if (exposeLocality) {
-                  hostnames = Util.blockLocations(table.io(), task);
+                  hostnames = Util.blockLocationsMutiFs(table.io(), task);
                 }
                 splits[index] = new FlinkInputSplit(index, task, hostnames);
               });
+      LOG.info("end to build FlinkInputSplit[].");
       return splits;
     } catch (IOException e) {
       throw new UncheckedIOException("Failed to process tasks iterable", e);
@@ -81,6 +88,29 @@ public class FlinkSplitPlanner {
     }
   }
 
+  static IncrementalAppendScan betweenStrategyPadding(
+      IncrementalAppendScan scan, Long startSnapshotId, Long endSnapshotId, String betweenMode) {
+    IncrementalAppendScan paddingScan = scan;
+
+    if (BetweenMode.l0r1.toString().equals(betweenMode)) {
+      if (startSnapshotId != null) {
+        paddingScan = paddingScan.fromSnapshotExclusive(startSnapshotId);
+      }
+      if (endSnapshotId != null) {
+        paddingScan = paddingScan.toSnapshot(endSnapshotId);
+      }
+    }
+    if (BetweenMode.l1r1.toString().equals(betweenMode)) {
+      if (startSnapshotId != null) {
+        paddingScan = paddingScan.fromSnapshotInclusive(startSnapshotId);
+      }
+      if (endSnapshotId != null) {
+        paddingScan = paddingScan.toSnapshot(endSnapshotId);
+      }
+    }
+    return paddingScan;
+  }
+
   static CloseableIterable<CombinedScanTask> planTasks(
       Table table, ScanContext context, ExecutorService workerPool) {
     ScanMode scanMode = checkScanMode(context);
@@ -88,18 +118,21 @@ public class FlinkSplitPlanner {
       IncrementalAppendScan scan = table.newIncrementalAppendScan();
       scan = refineScanWithBaseConfigs(scan, context, workerPool);
 
+      Long startSnapshotId = null;
+      Long endSnapshotId = null;
+
       if (context.startTag() != null) {
         Preconditions.checkArgument(
             table.snapshot(context.startTag()) != null,
             "Cannot find snapshot with tag %s",
             context.startTag());
-        scan = scan.fromSnapshotExclusive(table.snapshot(context.startTag()).snapshotId());
+        startSnapshotId = table.snapshot(context.startTag()).snapshotId();
       }
 
       if (context.startSnapshotId() != null) {
         Preconditions.checkArgument(
             context.startTag() == null, "START_SNAPSHOT_ID and START_TAG cannot both be set");
-        scan = scan.fromSnapshotExclusive(context.startSnapshotId());
+        startSnapshotId = context.startSnapshotId();
       }
 
       if (context.endTag() != null) {
@@ -107,14 +140,27 @@ public class FlinkSplitPlanner {
             table.snapshot(context.endTag()) != null,
             "Cannot find snapshot with tag %s",
             context.endTag());
-        scan = scan.toSnapshot(table.snapshot(context.endTag()).snapshotId());
+        endSnapshotId = table.snapshot(context.endTag()).snapshotId();
       }
 
       if (context.endSnapshotId() != null) {
         Preconditions.checkArgument(
             context.endTag() == null, "END_SNAPSHOT_ID and END_TAG cannot both be set");
-        scan = scan.toSnapshot(context.endSnapshotId());
+        endSnapshotId = context.endSnapshotId();
       }
+
+      if (context.streamingStartingStrategy()
+          == StreamingStartingStrategy.INCREMENTAL_FROM_SNAPSHOT_TIMESTAMP) {
+        if (context.startSnapshotTimestamp() != null) {
+          startSnapshotId =
+              SnapshotUtil.snapshotIdAsOfTime(table, context.startSnapshotTimestamp());
+        }
+        if (context.endSnapshotTimestamp() != null) {
+          endSnapshotId = SnapshotUtil.snapshotIdAsOfTime(table, context.endSnapshotTimestamp());
+        }
+      }
+
+      scan = betweenStrategyPadding(scan, startSnapshotId, endSnapshotId, context.betweenMode());
 
       return scan.planTasks();
     } else {
@@ -143,12 +189,19 @@ public class FlinkSplitPlanner {
     INCREMENTAL_APPEND_SCAN
   }
 
+  private enum BetweenMode {
+    l0r1,
+    l1r1
+  }
+
   @VisibleForTesting
   static ScanMode checkScanMode(ScanContext context) {
     if (context.startSnapshotId() != null
         || context.endSnapshotId() != null
         || context.startTag() != null
-        || context.endTag() != null) {
+        || context.endTag() != null
+        || context.startSnapshotTimestamp() != null
+        || context.endSnapshotTimestamp() != null) {
       return ScanMode.INCREMENTAL_APPEND_SCAN;
     } else {
       return ScanMode.BATCH;

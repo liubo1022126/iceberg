@@ -96,7 +96,7 @@ class BatchDataReader extends BaseBatchReader<FileScanTask>
     SparkDeleteFilter deleteFilter =
         task.deletes().isEmpty()
             ? null
-            : new SparkDeleteFilter(filePath, task.deletes(), counter());
+            : new SparkDeleteFilter(task.file(), task.deletes(), counter());
 
     return newBatchIterable(
             inputFile,

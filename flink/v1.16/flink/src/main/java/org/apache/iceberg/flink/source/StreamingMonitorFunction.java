@@ -153,7 +153,12 @@ public class StreamingMonitorFunction extends RichSourceFunction<FlinkInputSplit
           "The option start-snapshot-id %s is not an ancestor of the current snapshot.",
           startSnapshotId);
 
-      lastSnapshotId = startSnapshotId;
+      if (lastSnapshotId == INIT_LAST_SNAPSHOT_ID) {
+        Preconditions.checkNotNull(
+            table.currentSnapshot(), "Don't have any available snapshot in table.");
+
+        lastSnapshotId = table.currentSnapshot().snapshotId();
+      }
     }
   }
 

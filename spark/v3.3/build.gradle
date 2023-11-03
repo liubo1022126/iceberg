@@ -135,7 +135,7 @@ project(":iceberg-spark:iceberg-spark-extensions-${sparkMajorVersion}_${scalaVer
 
   dependencies {
     implementation "org.scala-lang.modules:scala-collection-compat_${scalaVersion}:${libs.versions.scala.collection.compat.get()}"
-    implementation libs.roaringbitmap
+    implementation project(path: ':iceberg-bundled-hellobike', configuration: 'shadow')
 
     compileOnly "org.scala-lang:scala-library"
     compileOnly project(path: ':iceberg-bundled-guava', configuration: 'shadow')

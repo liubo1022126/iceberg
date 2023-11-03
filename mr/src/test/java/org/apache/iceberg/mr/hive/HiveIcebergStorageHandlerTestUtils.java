@@ -30,7 +30,6 @@ import org.apache.iceberg.data.Record;
 import org.apache.iceberg.mr.Catalogs;
 import org.apache.iceberg.mr.TestHelper;
 import org.apache.iceberg.types.Types;
-import org.apache.orc.OrcConf;
 import org.junit.rules.TemporaryFolder;
 
 public class HiveIcebergStorageHandlerTestUtils {
@@ -72,7 +71,6 @@ public class HiveIcebergStorageHandlerTestUtils {
     // We would like to make sure that ORC reading overrides this config, so reading Iceberg tables
     // could work in
     // systems (like Hive 3.2 and higher) where this value is set to true explicitly.
-    shell.setHiveConfValue(OrcConf.FORCE_POSITIONAL_EVOLUTION.getHiveConfName(), "true");
     shell.start();
     return shell;
   }

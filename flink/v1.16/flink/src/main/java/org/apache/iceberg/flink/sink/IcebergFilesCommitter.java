@@ -18,6 +18,10 @@
  */
 package org.apache.iceberg.flink.sink;
 
+import static org.apache.iceberg.TableProperties.WATERMARK_EMPTY_SKIP_VALUE;
+import static org.apache.iceberg.TableProperties.WATERMARK_VALUE;
+import static org.apache.iceberg.TableProperties.WATERMARK_VALUE_DEFAULT;
+
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -31,6 +35,7 @@ import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeinfo.PrimitiveArrayTypeInfo;
+import org.apache.flink.api.java.typeutils.MapTypeInfo;
 import org.apache.flink.core.io.SimpleVersionedSerialization;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContext;
@@ -40,6 +45,7 @@ import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.runtime.typeutils.SortedMapTypeInfo;
 import org.apache.iceberg.AppendFiles;
+import org.apache.iceberg.DataOperations;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.ReplacePartitions;
@@ -93,6 +99,15 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
   // table. So we keep the finished files <1, <file0, file1>> in memory and retry to commit iceberg
   // table when the next checkpoint happen.
   private final NavigableMap<Long, byte[]> dataFilesPerCheckpoint = Maps.newTreeMap();
+
+  // watermark
+  private transient long currentWatermark;
+  private final NavigableMap<Long, Long> watermarkPerCheckpoint = Maps.newTreeMap();
+  private static final ListStateDescriptor<Map<Long, Long>> WATERMARK_DESCRIPTOR =
+      new ListStateDescriptor<>(
+          "iceberg-flink-watermark",
+          new MapTypeInfo<>(BasicTypeInfo.LONG_TYPE_INFO, BasicTypeInfo.LONG_TYPE_INFO));
+  private transient ListState<Map<Long, Long>> watermarkState;
 
   // The completed files cache for current checkpoint. Once the snapshot barrier received, it will
   // be flushed to the 'dataFilesPerCheckpoint'.
@@ -163,6 +178,22 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
             () -> table, table.properties(), flinkJobId, operatorUniqueId, subTaskId, attemptId);
     this.maxCommittedCheckpointId = INITIAL_CHECKPOINT_ID;
 
+    Snapshot lastAppendSnapshot = this.table.currentSnapshot();
+    while (lastAppendSnapshot != null
+        && !DataOperations.APPEND.equals(lastAppendSnapshot.operation())) {
+      if (lastAppendSnapshot.parentId() != null) {
+        lastAppendSnapshot = table.snapshot(lastAppendSnapshot.parentId());
+      } else {
+        lastAppendSnapshot = null;
+      }
+    }
+    this.currentWatermark =
+        lastAppendSnapshot == null
+            ? WATERMARK_VALUE_DEFAULT
+            : PropertyUtil.propertyAsLong(
+                lastAppendSnapshot.summary(), WATERMARK_VALUE, WATERMARK_VALUE_DEFAULT);
+    this.watermarkState = context.getOperatorStateStore().getListState(WATERMARK_DESCRIPTOR);
+
     this.checkpointsState = context.getOperatorStateStore().getListState(STATE_DESCRIPTOR);
     this.jobIdState = context.getOperatorStateStore().getListState(JOB_ID_DESCRIPTOR);
     if (context.isRestored()) {
@@ -175,6 +206,11 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
                 + "Otherwise, Flink auto generate an operator uid based on job topology."
                 + "With that, operator uid is subjective to change upon topology change.");
         return;
+      }
+
+      Map<Long, Long> restoredWatermarkPerCheckpoint = watermarkState.get().iterator().next();
+      if (restoredWatermarkPerCheckpoint != null) {
+        watermarkPerCheckpoint.putAll(restoredWatermarkPerCheckpoint);
       }
 
       String restoredFlinkJobId = jobIdIterable.iterator().next();
@@ -216,6 +252,20 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     // Reset the snapshot state to the latest state.
     checkpointsState.clear();
     checkpointsState.add(dataFilesPerCheckpoint);
+
+    // min(watermarkPerWriter).
+    Long minWatermarkPerWriter =
+        writeResultsOfCurrentCkpt.stream()
+            .map(WriteResult::getWatermark)
+            .filter(w -> w != WATERMARK_EMPTY_SKIP_VALUE)
+            .min((w1, w2) -> w1 > w2 ? 1 : -1)
+            .orElse(WATERMARK_VALUE_DEFAULT);
+    // watermark must move forward, Can't go back.
+    currentWatermark =
+        minWatermarkPerWriter > currentWatermark ? minWatermarkPerWriter : currentWatermark;
+    watermarkPerCheckpoint.put(checkpointId, currentWatermark);
+    watermarkState.clear();
+    watermarkState.add(watermarkPerCheckpoint);
 
     jobIdState.clear();
     jobIdState.add(flinkJobId);
@@ -412,8 +462,16 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     operation.set(OPERATOR_ID, operatorId);
     operation.toBranch(branch);
 
+    NavigableMap<Long, Long> watermarkMap = watermarkPerCheckpoint.headMap(checkpointId, true);
+    Long watermarkNow = watermarkMap.get(checkpointId);
+    if (watermarkNow != null && watermarkNow > 0) {
+      operation.set(WATERMARK_VALUE, String.valueOf(watermarkNow));
+      LOG.info("Committing {} to {}", WATERMARK_VALUE, watermarkNow);
+    }
+
     long startNano = System.nanoTime();
     operation.commit(); // abort is automatically called if this fails.
+    watermarkMap.clear();
     long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNano);
     LOG.info(
         "Committed {} to table: {}, branch: {}, checkpointId {} in {} ms",

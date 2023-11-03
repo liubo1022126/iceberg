@@ -18,6 +18,9 @@
  */
 package org.apache.iceberg.flink.sink;
 
+import static org.apache.iceberg.TableProperties.WATERMARK_EMPTY_SKIP_VALUE;
+import static org.apache.iceberg.TableProperties.WATERMARK_VALUE_DEFAULT;
+
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
@@ -25,6 +28,8 @@ import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.table.data.RowData;
+import org.apache.iceberg.flink.IcebergWatermark;
 import org.apache.iceberg.io.TaskWriter;
 import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.relocated.com.google.common.base.MoreObjects;
@@ -36,15 +41,29 @@ class IcebergStreamWriter<T> extends AbstractStreamOperator<WriteResult>
 
   private final String fullTableName;
   private final TaskWriterFactory<T> taskWriterFactory;
+  private final IcebergWatermark icebergWatermark;
 
   private transient TaskWriter<T> writer;
   private transient int subTaskId;
   private transient int attemptId;
   private transient IcebergStreamWriterMetrics writerMetrics;
 
+  private long watermark;
+
   IcebergStreamWriter(String fullTableName, TaskWriterFactory<T> taskWriterFactory) {
     this.fullTableName = fullTableName;
     this.taskWriterFactory = taskWriterFactory;
+    this.icebergWatermark = null;
+    setChainingStrategy(ChainingStrategy.ALWAYS);
+  }
+
+  IcebergStreamWriter(
+      String fullTableName,
+      TaskWriterFactory<T> taskWriterFactory,
+      IcebergWatermark icebergWatermark) {
+    this.fullTableName = fullTableName;
+    this.taskWriterFactory = taskWriterFactory;
+    this.icebergWatermark = icebergWatermark;
     setChainingStrategy(ChainingStrategy.ALWAYS);
   }
 
@@ -59,6 +78,8 @@ class IcebergStreamWriter<T> extends AbstractStreamOperator<WriteResult>
 
     // Initialize the task writer.
     this.writer = taskWriterFactory.create();
+
+    this.watermark = WATERMARK_VALUE_DEFAULT;
   }
 
   @Override
@@ -69,6 +90,12 @@ class IcebergStreamWriter<T> extends AbstractStreamOperator<WriteResult>
 
   @Override
   public void processElement(StreamRecord<T> element) throws Exception {
+    if (icebergWatermark != null) {
+      RowData rowData = (RowData) element.getValue();
+      long currentWatermark = icebergWatermark.getWatermark(rowData);
+      watermark = currentWatermark > watermark ? currentWatermark : watermark;
+    }
+
     writer.write(element.getValue());
   }
 
@@ -109,6 +136,7 @@ class IcebergStreamWriter<T> extends AbstractStreamOperator<WriteResult>
 
     long startNano = System.nanoTime();
     WriteResult result = writer.complete();
+    result.setWatermark(watermark);
     writerMetrics.updateFlushResult(result);
     output.collect(new StreamRecord<>(result));
     writerMetrics.flushDuration(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNano));
@@ -116,5 +144,10 @@ class IcebergStreamWriter<T> extends AbstractStreamOperator<WriteResult>
     // Set writer to null to prevent duplicate flushes in the corner case of
     // prepareSnapshotPreBarrier happening after endInput.
     writer = null;
+
+    // IcebergFilesCommitter will skip the watermark which value is WATERMARK_EMPTY_SKIP_VALUE.
+    if (icebergWatermark != null && icebergWatermark.isSkipEmpty()) {
+      watermark = WATERMARK_EMPTY_SKIP_VALUE;
+    }
   }
 }

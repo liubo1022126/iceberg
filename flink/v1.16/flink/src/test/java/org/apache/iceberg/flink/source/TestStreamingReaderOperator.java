@@ -269,7 +269,7 @@ public class TestStreamingReaderOperator extends TableTestBase {
             .buildFormat();
 
     OneInputStreamOperatorFactory<FlinkInputSplit, RowData> factory =
-        StreamingReaderOperator.factory(inputFormat);
+        StreamingReaderOperator.factory(inputFormat, -1L, -1L);
     OneInputStreamOperatorTestHarness<FlinkInputSplit, RowData> harness =
         new OneInputStreamOperatorTestHarness<>(factory, 1, 1, 0);
     harness.getStreamConfig().setTimeCharacteristic(TimeCharacteristic.ProcessingTime);

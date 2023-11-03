@@ -18,7 +18,7 @@
  */
 package org.apache.iceberg.deletes;
 
-import org.roaringbitmap.longlong.Roaring64Bitmap;
+import org.apache.iceberg.relocated.org.roaringbitmap.longlong.Roaring64Bitmap;
 
 class BitmapPositionDeleteIndex implements PositionDeleteIndex {
   private final Roaring64Bitmap roaring64Bitmap;

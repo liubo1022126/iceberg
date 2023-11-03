@@ -291,15 +291,24 @@ public class FlinkSource {
         if (env.getMaxParallelism() > 0) {
           parallelism = Math.min(parallelism, env.getMaxParallelism());
         }
-        return env.createInput(format, typeInfo).setParallelism(parallelism);
+        return env.createInput(format, typeInfo)
+            .name(String.format("Iceberg table (%s) Source", table))
+            .setParallelism(parallelism);
       } else {
         StreamingMonitorFunction function = new StreamingMonitorFunction(tableLoader, context);
 
         String monitorFunctionName = String.format("Iceberg table (%s) monitor", table);
         String readerOperatorName = String.format("Iceberg table (%s) reader", table);
 
+        long readLimitPerSecond = readableConfig.get(FlinkConfigOptions.READ_LIMIT_PER_SECOND);
+        long readSplitWaitTime = readableConfig.get(FlinkConfigOptions.READ_SPLIT_WAIT_TIME);
+
         return env.addSource(function, monitorFunctionName)
-            .transform(readerOperatorName, typeInfo, StreamingReaderOperator.factory(format));
+            .name(String.format("Iceberg table (%s) Source", table))
+            .transform(
+                readerOperatorName,
+                typeInfo,
+                StreamingReaderOperator.factory(format, readLimitPerSecond, readSplitWaitTime));
       }
     }
   }

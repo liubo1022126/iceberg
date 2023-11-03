@@ -180,7 +180,7 @@ public class HiveIcebergFilterFactory {
     return hiveDecimalWritable
         .getHiveDecimal()
         .bigDecimalValue()
-        .setScale(hiveDecimalWritable.scale());
+        .setScale(hiveDecimalWritable.getScale());
   }
 
   // Hive uses `java.sql.Date.valueOf(lit.toString());` to convert a literal to Date

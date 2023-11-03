@@ -23,9 +23,12 @@ import org.apache.iceberg.events.Listeners;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.util.SnapshotUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 abstract class BaseIncrementalScan<ThisT, T extends ScanTask, G extends ScanTaskGroup<T>>
     extends BaseScan<ThisT, T, G> implements IncrementalScan<ThisT, T, G> {
+  private static final Logger LOG = LoggerFactory.getLogger(BaseIncrementalScan.class);
 
   protected BaseIncrementalScan(Table table, Schema schema, TableScanContext context) {
     super(table, schema, context);
@@ -101,6 +104,11 @@ abstract class BaseIncrementalScan<ThisT, T extends ScanTask, G extends ScanTask
     }
 
     long toSnapshotIdInclusive = toSnapshotIdInclusive();
+
+    if (skipEmptyLineage(toSnapshotIdInclusive)) {
+      return CloseableIterable.empty();
+    }
+
     Long fromSnapshotIdExclusive = fromSnapshotIdExclusive(toSnapshotIdInclusive);
 
     if (fromSnapshotIdExclusive != null) {
@@ -128,6 +136,11 @@ abstract class BaseIncrementalScan<ThisT, T extends ScanTask, G extends ScanTask
 
   private boolean scanCurrentLineage() {
     return context().fromSnapshotId() == null && context().toSnapshotId() == null;
+  }
+
+  private boolean skipEmptyLineage(long toSnapshotIdInclusive) {
+    return !context().fromSnapshotInclusive()
+        && toSnapshotIdInclusive == context().fromSnapshotId().longValue();
   }
 
   private long toSnapshotIdInclusive() {

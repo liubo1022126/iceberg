@@ -25,10 +25,10 @@ import org.apache.iceberg.io.DeleteWriteResult;
 import org.apache.iceberg.io.FileWriter;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
+import org.apache.iceberg.relocated.org.roaringbitmap.longlong.PeekableLongIterator;
+import org.apache.iceberg.relocated.org.roaringbitmap.longlong.Roaring64Bitmap;
 import org.apache.iceberg.types.Comparators;
 import org.apache.iceberg.util.CharSequenceWrapper;
-import org.roaringbitmap.longlong.PeekableLongIterator;
-import org.roaringbitmap.longlong.Roaring64Bitmap;
 
 /**
  * A position delete writer that is capable of handling unordered deletes without rows.

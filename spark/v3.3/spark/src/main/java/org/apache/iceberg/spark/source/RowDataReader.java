@@ -81,16 +81,15 @@ class RowDataReader extends BaseRowReader<FileScanTask> implements PartitionRead
 
   @Override
   protected CloseableIterator<InternalRow> open(FileScanTask task) {
-    String filePath = task.file().path().toString();
-    LOG.debug("Opening data file {}", filePath);
-    SparkDeleteFilter deleteFilter = new SparkDeleteFilter(filePath, task.deletes(), counter());
+    LOG.debug("Opening data file {}", task.file().path().toString());
+    SparkDeleteFilter deleteFilter = new SparkDeleteFilter(task.file(), task.deletes(), counter());
 
     // schema or rows returned by readers
     Schema requiredSchema = deleteFilter.requiredSchema();
     Map<Integer, ?> idToConstant = constantsMap(task, requiredSchema);
 
     // update the current file for Spark's filename() function
-    InputFileBlockHolder.set(filePath, task.start(), task.length());
+    InputFileBlockHolder.set(task.file().path().toString(), task.start(), task.length());
 
     return deleteFilter.filter(open(task, requiredSchema, idToConstant)).iterator();
   }
