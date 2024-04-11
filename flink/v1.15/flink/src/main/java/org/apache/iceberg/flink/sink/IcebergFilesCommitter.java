@@ -265,6 +265,9 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
   @Override
   public void notifyCheckpointComplete(long checkpointId) throws Exception {
     super.notifyCheckpointComplete(checkpointId);
+
+    LOG.info("Complete checkpoint {}", checkpointId);
+
     // It's possible that we have the following events:
     //   1. snapshotState(ckpId);
     //   2. snapshotState(ckpId+1);
