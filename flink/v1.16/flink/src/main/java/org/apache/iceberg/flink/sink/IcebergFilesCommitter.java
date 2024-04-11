@@ -178,20 +178,26 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
             () -> table, table.properties(), flinkJobId, operatorUniqueId, subTaskId, attemptId);
     this.maxCommittedCheckpointId = INITIAL_CHECKPOINT_ID;
 
-    Snapshot lastAppendSnapshot = this.table.currentSnapshot();
-    while (lastAppendSnapshot != null
-        && !DataOperations.APPEND.equals(lastAppendSnapshot.operation())) {
-      if (lastAppendSnapshot.parentId() != null) {
-        lastAppendSnapshot = table.snapshot(lastAppendSnapshot.parentId());
-      } else {
-        lastAppendSnapshot = null;
+    this.currentWatermark = WATERMARK_VALUE_DEFAULT;
+    Snapshot lastWatermarkSnapshot = this.table.currentSnapshot();
+    while (lastWatermarkSnapshot != null) {
+      if (DataOperations.APPEND.equals(lastWatermarkSnapshot.operation())
+              || DataOperations.OVERWRITE.equals(lastWatermarkSnapshot.operation())) {
+        long lastWatermark =
+                PropertyUtil.propertyAsLong(
+                        lastWatermarkSnapshot.summary(), WATERMARK_VALUE, WATERMARK_VALUE_DEFAULT);
+        if (lastWatermark != WATERMARK_VALUE_DEFAULT) {
+          this.currentWatermark = lastWatermark;
+          break;
+        }
       }
+      lastWatermarkSnapshot =
+              lastWatermarkSnapshot.parentId() == null
+                      ? null
+                      : table.snapshot(lastWatermarkSnapshot.parentId());
     }
-    this.currentWatermark =
-        lastAppendSnapshot == null
-            ? WATERMARK_VALUE_DEFAULT
-            : PropertyUtil.propertyAsLong(
-                lastAppendSnapshot.summary(), WATERMARK_VALUE, WATERMARK_VALUE_DEFAULT);
+
+
     this.watermarkState = context.getOperatorStateStore().getListState(WATERMARK_DESCRIPTOR);
 
     this.checkpointsState = context.getOperatorStateStore().getListState(STATE_DESCRIPTOR);

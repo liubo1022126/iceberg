@@ -1,1 +1,1 @@
-1.4.0-tag-hellobike-20231027
+1.0.0-tag-hellobike-20240119
