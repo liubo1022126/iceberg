@@ -127,8 +127,8 @@ subprojects {
 //          url = 'https://maven.hellobike.cn/nexus/content/repositories/carkey-archjava-release'
 //          credentials {
 //            // 私服的用户与密码
-//            username 'archjava'
-//            password 'archjava123'
+//            username 'simbadeploy'
+//            password 'simbadeploy'
 //          }
         }
       }
