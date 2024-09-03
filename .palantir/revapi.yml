@@ -805,6 +805,10 @@ acceptedBreaks:
       old: "method void org.apache.iceberg.view.ViewVersion::check()"
       justification: "Acceptable break due to updating View APIs"
     org.apache.iceberg:iceberg-core:
+    - code: "java.class.defaultSerializationChanged"
+      old: "class org.apache.iceberg.io.WriteResult"
+      new: "class org.apache.iceberg.io.WriteResult"
+      justification: "it is ok"
     - code: "java.class.removed"
       old: "class org.apache.iceberg.actions.BaseDeleteOrphanFilesActionResult"
       justification: "Removing deprecated code"
@@ -866,6 +870,23 @@ acceptedBreaks:
       old: "method void org.apache.iceberg.encryption.Ciphers::<init>()"
       new: "method void org.apache.iceberg.encryption.Ciphers::<init>()"
       justification: "Static utility class - should not have public constructor"
+    org.apache.iceberg:iceberg-data:
+    - code: "java.method.parameterTypeChanged"
+      old: "parameter void org.apache.iceberg.data.DeleteFilter<T>::<init>(===java.lang.String===,\
+        \ java.util.List<org.apache.iceberg.DeleteFile>, org.apache.iceberg.Schema,\
+        \ org.apache.iceberg.Schema)"
+      new: "parameter void org.apache.iceberg.data.DeleteFilter<T>::<init>(===org.apache.iceberg.DataFile===,\
+        \ java.util.List<org.apache.iceberg.DeleteFile>, org.apache.iceberg.Schema,\
+        \ org.apache.iceberg.Schema)"
+      justification: "it is ok"
+    - code: "java.method.parameterTypeChanged"
+      old: "parameter void org.apache.iceberg.data.DeleteFilter<T>::<init>(===java.lang.String===,\
+        \ java.util.List<org.apache.iceberg.DeleteFile>, org.apache.iceberg.Schema,\
+        \ org.apache.iceberg.Schema, org.apache.iceberg.deletes.DeleteCounter)"
+      new: "parameter void org.apache.iceberg.data.DeleteFilter<T>::<init>(===org.apache.iceberg.DataFile===,\
+        \ java.util.List<org.apache.iceberg.DeleteFile>, org.apache.iceberg.Schema,\
+        \ org.apache.iceberg.Schema, org.apache.iceberg.deletes.DeleteCounter)"
+      justification: "it is ok"
   apache-iceberg-0.14.0:
     org.apache.iceberg:iceberg-api:
     - code: "java.class.defaultSerializationChanged"

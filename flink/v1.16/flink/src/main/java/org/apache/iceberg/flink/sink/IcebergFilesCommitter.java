@@ -182,21 +182,20 @@ class IcebergFilesCommitter extends AbstractStreamOperator<Void>
     Snapshot lastWatermarkSnapshot = this.table.currentSnapshot();
     while (lastWatermarkSnapshot != null) {
       if (DataOperations.APPEND.equals(lastWatermarkSnapshot.operation())
-              || DataOperations.OVERWRITE.equals(lastWatermarkSnapshot.operation())) {
+          || DataOperations.OVERWRITE.equals(lastWatermarkSnapshot.operation())) {
         long lastWatermark =
-                PropertyUtil.propertyAsLong(
-                        lastWatermarkSnapshot.summary(), WATERMARK_VALUE, WATERMARK_VALUE_DEFAULT);
+            PropertyUtil.propertyAsLong(
+                lastWatermarkSnapshot.summary(), WATERMARK_VALUE, WATERMARK_VALUE_DEFAULT);
         if (lastWatermark != WATERMARK_VALUE_DEFAULT) {
           this.currentWatermark = lastWatermark;
           break;
         }
       }
       lastWatermarkSnapshot =
-              lastWatermarkSnapshot.parentId() == null
-                      ? null
-                      : table.snapshot(lastWatermarkSnapshot.parentId());
+          lastWatermarkSnapshot.parentId() == null
+              ? null
+              : table.snapshot(lastWatermarkSnapshot.parentId());
     }
-
 
     this.watermarkState = context.getOperatorStateStore().getListState(WATERMARK_DESCRIPTOR);
 
